@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="BoothManager.Pages.AlleyDashboardPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <Grid Padding="24" RowSpacing="12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <Grid Grid.Row="0" ColumnSpacing="12">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <StackPanel Spacing="2">
+                <TextBlock Text="Alley Dashboard" FontSize="24" FontWeight="Bold"/>
+                <TextBlock x:Name="Subtitle" Foreground="{StaticResource AlleyMutedBrush}" FontSize="12"
+                           Text="Your community's home base, same as vrchatlegends.com/alley/dashboard."/>
+            </StackPanel>
+            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                <Button x:Name="OpenWebBtn" Click="OpenWebBtn_Click">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <FontIcon Glyph="&#xE774;" FontSize="14"/>
+                        <TextBlock Text="Open on the website"/>
+                    </StackPanel>
+                </Button>
+                <Button x:Name="ConnectBtn" Click="ConnectBtn_Click" Style="{StaticResource AccentButtonStyle}">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <FontIcon Glyph="&#xE8FB;" FontSize="14"/>
+                        <TextBlock x:Name="ConnectBtnText" Text="Sign in"/>
+                    </StackPanel>
+                </Button>
+            </StackPanel>
+        </Grid>
+
+        <!-- disconnected -->
+        <Border x:Name="GatePanel" Grid.Row="1" Background="{StaticResource AlleyCardBrush}"
+                BorderBrush="{StaticResource AlleyCardBorderBrush}" BorderThickness="1"
+                CornerRadius="{StaticResource CardRadius}" Padding="40" MaxWidth="580"
+                HorizontalAlignment="Center" VerticalAlignment="Center">
+            <StackPanel Spacing="14" HorizontalAlignment="Center">
+                <FontIcon Glyph="&#xE968;" FontSize="42" Foreground="{StaticResource AlleyTealBrush}" HorizontalAlignment="Center"/>
+                <TextBlock Text="Sign in to the Alley service" FontSize="18" FontWeight="SemiBold" HorizontalAlignment="Center"/>
+                <TextBlock TextWrapping="Wrap" TextAlignment="Center" Foreground="{StaticResource AlleyMutedBrush}"
+                           Text="Community owners and booth managers: this is the same Discord sign-in the Legends Alley SDK and the website dashboard use."/>
+                <TextBlock x:Name="GateError" Foreground="#FF6B81" FontSize="12" TextWrapping="Wrap"
+                           TextAlignment="Center" Visibility="Collapsed"/>
+                <ProgressRing x:Name="GateRing" IsActive="False" Width="28" Height="28" HorizontalAlignment="Center"/>
+            </StackPanel>
+        </Border>
+
+        <!-- connected -->
+        <Grid x:Name="ContentRoot" Grid.Row="1" Visibility="Collapsed" RowSpacing="10">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
+
+            <StackPanel Orientation="Horizontal" Spacing="6">
+                <Button x:Name="TabOverviewBtn" Click="Tab_Click" Tag="0" Style="{StaticResource AccentButtonStyle}">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <FontIcon Glyph="&#xE9D9;" FontSize="13"/><TextBlock Text="Overview"/>
+                    </StackPanel>
+                </Button>
+                <Button x:Name="TabProfileBtn" Click="Tab_Click" Tag="1">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <FontIcon Glyph="&#xE779;" FontSize="13"/><TextBlock Text="Profile"/>
+                    </StackPanel>
+                </Button>
+                <Button x:Name="TabTeamBtn" Click="Tab_Click" Tag="2">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <FontIcon Glyph="&#xE716;" FontSize="13"/><TextBlock Text="Team"/>
+                    </StackPanel>
+                </Button>
+                <Button x:Name="TabBoothsBtn" Click="Tab_Click" Tag="3">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <FontIcon Glyph="&#xE7B8;" FontSize="13"/><TextBlock Text="Booths"/>
+                    </StackPanel>
+                </Button>
+            </StackPanel>
+
+            <ScrollViewer Grid.Row="1">
+                <Grid>
+                    <!-- OVERVIEW -->
+                    <StackPanel x:Name="OverviewTab" Spacing="12" MaxWidth="920" HorizontalAlignment="Left"/>
+                    <!-- PROFILE -->
+                    <StackPanel x:Name="ProfileTab" Spacing="12" MaxWidth="720" HorizontalAlignment="Left" Visibility="Collapsed"/>
+                    <!-- TEAM -->
+                    <StackPanel x:Name="TeamTab" Spacing="12" MaxWidth="720" HorizontalAlignment="Left" Visibility="Collapsed"/>
+                    <!-- BOOTHS -->
+                    <StackPanel x:Name="BoothsTab" Spacing="12" MaxWidth="920" HorizontalAlignment="Left" Visibility="Collapsed"/>
+                </Grid>
+            </ScrollViewer>
+        </Grid>
+    </Grid>
+</Page>

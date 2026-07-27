@@ -153,6 +153,7 @@ public sealed partial class MainWindow : Window
         UserChip.Visibility = Visibility.Visible;
 
         NavAdmin.Visibility = Session.IsAdmin ? Visibility.Visible : Visibility.Collapsed;
+        UpdateAlleyNav();
         NavView.IsPaneVisible = true;
         NavView.SelectedItem = NavDashboard;
     }
@@ -178,7 +179,8 @@ public sealed partial class MainWindow : Window
         {
             "dashboard" => typeof(DashboardPage),
             "booths" => typeof(BoothsPage),
-            "alley" => typeof(AlleyPage),
+            "alleydash" => typeof(AlleyDashboardPage),
+            "alleyadmin" => typeof(AlleyAdminPage),
             "builder" => typeof(BoothBuilderPage),
             "standee" => typeof(StandeePage),
             "atlas" => typeof(AtlasPage),
@@ -187,6 +189,14 @@ public sealed partial class MainWindow : Window
             _ => null,
         };
         if (target != null && ContentFrame.CurrentSourcePageType != target)
-            ContentFrame.Navigate(target);
+            ContentFrame.Navigate(target, null, new Microsoft.UI.Xaml.Media.Animation.DrillInNavigationTransitionInfo());
+    }
+
+    /// <summary>Shows the Alley Admin nav item for staff or site admins.</summary>
+    public void UpdateAlleyNav()
+    {
+        NavAlleyAdmin.Visibility = Services.AlleyApi.IsStaff || Services.Session.IsAdmin
+            ? Visibility.Visible
+            : Visibility.Collapsed;
     }
 }

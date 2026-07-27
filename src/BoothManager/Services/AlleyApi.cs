@@ -42,21 +42,44 @@ public class AlleyCommunity
 
 public class AlleyEventLimits
 {
+    [JsonPropertyName("maxBoundsMeters")] public AlleyBounds? MaxBoundsMeters { get; set; }
     [JsonPropertyName("maxTriangles")] public int MaxTriangles { get; set; }
     [JsonPropertyName("maxBuildSizeMB")] public int MaxBuildSizeMB { get; set; }
     [JsonPropertyName("maxVramMB")] public int MaxVramMB { get; set; }
     [JsonPropertyName("maxMaterialSlots")] public int MaxMaterialSlots { get; set; }
     [JsonPropertyName("maxUniqueTextures")] public int MaxUniqueTextures { get; set; }
     [JsonPropertyName("maxTextureResolution")] public int MaxTextureResolution { get; set; }
+    [JsonPropertyName("maxAndroidTextureResolution")] public int MaxAndroidTextureResolution { get; set; }
+    [JsonPropertyName("maxStaticMeshes")] public int MaxStaticMeshes { get; set; }
+    [JsonPropertyName("maxSkinnedMeshes")] public int MaxSkinnedMeshes { get; set; }
+    [JsonPropertyName("maxParticleSystems")] public int MaxParticleSystems { get; set; }
+    [JsonPropertyName("maxTotalParticles")] public int MaxTotalParticles { get; set; }
+    [JsonPropertyName("maxAnimators")] public int MaxAnimators { get; set; }
+    [JsonPropertyName("maxAnimationClips")] public int MaxAnimationClips { get; set; }
     [JsonPropertyName("maxUdonScripts")] public int MaxUdonScripts { get; set; }
     [JsonPropertyName("maxPickups")] public int MaxPickups { get; set; }
     [JsonPropertyName("maxAvatarPedestals")] public int MaxAvatarPedestals { get; set; }
     [JsonPropertyName("maxPortals")] public int MaxPortals { get; set; }
+    [JsonPropertyName("maxTextComponents")] public int MaxTextComponents { get; set; }
     [JsonPropertyName("maxAudioSources")] public int MaxAudioSources { get; set; }
+    [JsonPropertyName("maxAudioRangeMeters")] public double MaxAudioRangeMeters { get; set; }
+    [JsonPropertyName("maxSlideshowImages")] public int MaxSlideshowImages { get; set; }
+    [JsonPropertyName("maxVideoPlayers")] public int MaxVideoPlayers { get; set; }
+    [JsonPropertyName("maxGroupButtons")] public int MaxGroupButtons { get; set; }
+    [JsonPropertyName("maxEstimatedDrawCalls")] public int MaxEstimatedDrawCalls { get; set; }
+    [JsonPropertyName("maxEstimatedSetPasses")] public int MaxEstimatedSetPasses { get; set; }
+    [JsonPropertyName("maxNonBoxColliders")] public int MaxNonBoxColliders { get; set; }
     [JsonPropertyName("allowUdon")] public bool AllowUdon { get; set; }
     [JsonPropertyName("allowPickups")] public bool AllowPickups { get; set; }
     [JsonPropertyName("allowPedestals")] public bool AllowPedestals { get; set; }
     [JsonPropertyName("allowPortals")] public bool AllowPortals { get; set; }
+}
+
+public class AlleyBounds
+{
+    [JsonPropertyName("x")] public double X { get; set; }
+    [JsonPropertyName("y")] public double Y { get; set; }
+    [JsonPropertyName("z")] public double Z { get; set; }
 }
 
 public class AlleyEvent
@@ -67,8 +90,12 @@ public class AlleyEvent
     [JsonPropertyName("startsAt")] public string StartsAt { get; set; } = "";
     [JsonPropertyName("endsAt")] public string EndsAt { get; set; } = "";
     [JsonPropertyName("uploadDeadline")] public string UploadDeadline { get; set; } = "";
+    [JsonPropertyName("timezone")] public string Timezone { get; set; } = "";
+    [JsonPropertyName("active")] public bool Active { get; set; }
     [JsonPropertyName("acceptingBooths")] public bool AcceptingBooths { get; set; }
     [JsonPropertyName("minSdkVersion")] public string MinSdkVersion { get; set; } = "";
+    [JsonPropertyName("scheduleText")] public string ScheduleText { get; set; } = "";
+    [JsonPropertyName("crewText")] public string CrewText { get; set; } = "";
     [JsonPropertyName("limits")] public AlleyEventLimits? Limits { get; set; }
 }
 
@@ -90,6 +117,7 @@ public class AlleyBooth
     [JsonPropertyName("communityName")] public string CommunityName { get; set; } = "";
     [JsonPropertyName("communitySlug")] public string CommunitySlug { get; set; } = "";
     [JsonPropertyName("groupId")] public string GroupId { get; set; } = "";
+    [JsonPropertyName("description")] public string Description { get; set; } = "";
     [JsonPropertyName("logoUrl")] public string LogoUrl { get; set; } = "";
     [JsonPropertyName("version")] public int Version { get; set; }
     [JsonPropertyName("status")] public string Status { get; set; } = "";
@@ -97,6 +125,7 @@ public class AlleyBooth
     [JsonPropertyName("sha256")] public string Sha256 { get; set; } = "";
     [JsonPropertyName("prefabName")] public string PrefabName { get; set; } = "";
     [JsonPropertyName("shaders")] public List<string> Shaders { get; set; } = new();
+    [JsonPropertyName("limitsBypassed")] public bool LimitsBypassed { get; set; }
     [JsonPropertyName("downloadUrl")] public string DownloadUrl { get; set; } = "";
     [JsonPropertyName("previewUrl")] public string PreviewUrl { get; set; } = "";
     [JsonPropertyName("uploadedAt")] public string UploadedAt { get; set; } = "";
@@ -119,6 +148,7 @@ public class AlleyApplication
     [JsonPropertyName("status")] public string Status { get; set; } = "";
     [JsonPropertyName("reviewNote")] public string ReviewNote { get; set; } = "";
     [JsonPropertyName("reviewedBy")] public string ReviewedBy { get; set; } = "";
+    [JsonPropertyName("reviewedAt")] public string ReviewedAt { get; set; } = "";
     [JsonPropertyName("createdAt")] public string CreatedAt { get; set; } = "";
 }
 
@@ -487,4 +517,31 @@ public static class AlleyApi
 
     public static Task<ApiResult<bool>> DeleteEventAsync(string id, bool deleteBooths) =>
         SendOk(HttpMethod.Delete, $"/api/events/{Uri.EscapeDataString(id)}?deleteBooths={(deleteBooths ? "true" : "false")}", null);
+
+    public static Task<ApiResult<AlleyEventLimits>> DefaultLimitsAsync() =>
+        GetJson("/api/events/defaults/limits", root =>
+            root.TryGetProperty("limits", out var l) ? l.Deserialize<AlleyEventLimits>(JsonOpts) : root.Deserialize<AlleyEventLimits>(JsonOpts));
+
+    public static async Task<ApiResult<string>> AdminUploadCommunityLogoAsync(string id, byte[] bytes, string contentType)
+    {
+        try
+        {
+            using var req = new HttpRequestMessage(HttpMethod.Put, Base + $"/api/admin/communities/{Uri.EscapeDataString(id)}/logo");
+            req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", Token);
+            req.Content = new ByteArrayContent(bytes);
+            req.Content.Headers.ContentType = new MediaTypeHeaderValue(contentType);
+            using var res = await Http.SendAsync(req);
+            string body = await res.Content.ReadAsStringAsync();
+            if (!res.IsSuccessStatusCode)
+            {
+                return new ApiResult<string> { Status = (int)res.StatusCode, Error = ExtractError(body, $"HTTP {(int)res.StatusCode}") };
+            }
+            using var doc = JsonDocument.Parse(body);
+            return new ApiResult<string> { Status = 200, Data = doc.RootElement.TryGetProperty("logoUrl", out var u) ? u.GetString() ?? "" : "" };
+        }
+        catch (Exception ex)
+        {
+            return new ApiResult<string> { Status = 0, Error = ex.Message };
+        }
+    }
 }

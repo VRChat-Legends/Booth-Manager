@@ -62,10 +62,22 @@
 
         <Border Grid.Column="1" Background="{StaticResource AlleyCardBrush}" BorderBrush="{StaticResource AlleyCardBorderBrush}"
                 BorderThickness="1" CornerRadius="{StaticResource CardRadius}" Padding="16">
-            <Grid>
-                <TextBlock x:Name="PreviewPlaceholder" Text="The silhouette preview appears here."
-                           Foreground="{StaticResource AlleyMutedBrush}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                <Image x:Name="PreviewImg" Stretch="Uniform"/>
+            <Grid RowSpacing="10">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+                <StackPanel Orientation="Horizontal" Spacing="6" HorizontalAlignment="Right">
+                    <Button x:Name="View3DBtn" Content="3D" FontSize="12" Click="View3DBtn_Click" IsEnabled="False"/>
+                    <Button x:Name="View2DBtn" Content="Silhouette" FontSize="12" Click="View2DBtn_Click" IsEnabled="False"/>
+                </StackPanel>
+                <Grid Grid.Row="1">
+                    <TextBlock x:Name="PreviewPlaceholder" Text="Generate a standee and it appears here in 3D. Drag to orbit, scroll to zoom."
+                               Foreground="{StaticResource AlleyMutedBrush}" HorizontalAlignment="Center" VerticalAlignment="Center"
+                               TextWrapping="Wrap" TextAlignment="Center" MaxWidth="320"/>
+                    <Image x:Name="PreviewImg" Stretch="Uniform" Visibility="Collapsed"/>
+                    <Grid x:Name="Preview3DHost" Visibility="Collapsed"/>
+                </Grid>
             </Grid>
         </Border>
     </Grid>

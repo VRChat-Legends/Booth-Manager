@@ -46,8 +46,11 @@
                 <NavigationViewItem x:Name="NavBooths" Content="Booths" Tag="booths">
                     <NavigationViewItem.Icon><FontIcon Glyph="&#xE8B7;"/></NavigationViewItem.Icon>
                 </NavigationViewItem>
-                <NavigationViewItem x:Name="NavAlley" Content="Alley Service" Tag="alley">
+                <NavigationViewItem x:Name="NavAlleyDash" Content="Alley Dashboard" Tag="alleydash">
                     <NavigationViewItem.Icon><FontIcon Glyph="&#xE968;"/></NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <NavigationViewItem x:Name="NavAlleyAdmin" Content="Alley Admin" Tag="alleyadmin" Visibility="Collapsed">
+                    <NavigationViewItem.Icon><FontIcon Glyph="&#xE912;"/></NavigationViewItem.Icon>
                 </NavigationViewItem>
                 <NavigationViewItem x:Name="NavBuilder" Content="Booth Builder" Tag="builder">
                     <NavigationViewItem.Icon><FontIcon Glyph="&#xE90F;"/></NavigationViewItem.Icon>

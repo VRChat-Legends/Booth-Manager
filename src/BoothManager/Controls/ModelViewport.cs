@@ -25,6 +25,33 @@ public sealed class ModelViewport : Grid
     private bool _renderBusy;
     private bool _renderDirty;
     private DateTime _lastResizeRender = DateTime.MinValue;
+    private Microsoft.UI.Dispatching.DispatcherQueueTimer? _spinTimer;
+
+    /// <summary>Slow idle orbit until the user grabs the model.</summary>
+    public bool AutoSpin
+    {
+        get => _spinTimer != null;
+        set
+        {
+            if (value && _spinTimer == null)
+            {
+                _spinTimer = DispatcherQueue.CreateTimer();
+                _spinTimer.Interval = TimeSpan.FromMilliseconds(33);
+                _spinTimer.Tick += (_, _) =>
+                {
+                    if (_dragging || _model == null) return;
+                    _renderer.Yaw += 0.0045f;
+                    RequestRender();
+                };
+                _spinTimer.Start();
+            }
+            else if (!value && _spinTimer != null)
+            {
+                _spinTimer.Stop();
+                _spinTimer = null;
+            }
+        }
+    }
 
     public ModelViewport()
     {
@@ -45,6 +72,7 @@ public sealed class ModelViewport : Grid
         Children.Add(_hint);
 
         SizeChanged += (_, _) => OnViewportResized();
+        Unloaded += (_, _) => AutoSpin = false;
         PointerPressed += OnPointerPressed;
         PointerMoved += OnPointerMoved;
         PointerReleased += OnPointerReleased;

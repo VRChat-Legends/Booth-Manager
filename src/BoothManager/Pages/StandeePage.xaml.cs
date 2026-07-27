@@ -1,3 +1,4 @@
+using BoothManager.Controls;
 using BoothManager.Core;
 using BoothManager.Services;
 using Microsoft.UI.Xaml;
@@ -10,10 +11,12 @@ public sealed partial class StandeePage : Page
 {
     private string _inputPath = "";
     private string _lastOutputDir = "";
+    private readonly ModelViewport _viewport = new();
 
     public StandeePage()
     {
         InitializeComponent();
+        Preview3DHost.Children.Add(_viewport);
     }
 
     private async void PickBtn_Click(object sender, RoutedEventArgs e)
@@ -39,7 +42,33 @@ public sealed partial class StandeePage : Page
         bmp.UriSource = new Uri(path);
         PreviewImg.Source = bmp;
         PreviewPlaceholder.Visibility = Visibility.Collapsed;
+        PreviewImg.Visibility = Visibility.Visible;
+        Preview3DHost.Visibility = Visibility.Collapsed;
     }
+
+    private void Show3D()
+    {
+        PreviewPlaceholder.Visibility = Visibility.Collapsed;
+        PreviewImg.Visibility = Visibility.Collapsed;
+        Preview3DHost.Visibility = Visibility.Visible;
+        _viewport.RequestRender();
+    }
+
+    private void View3DBtn_Click(object sender, RoutedEventArgs e)
+    {
+        Show3D();
+        View3DBtn.IsEnabled = false;
+        View2DBtn.IsEnabled = true;
+    }
+
+    private void View2DBtn_Click(object sender, RoutedEventArgs e)
+    {
+        if (!string.IsNullOrEmpty(_lastPreviewPng)) ShowImage(_lastPreviewPng);
+        View3DBtn.IsEnabled = true;
+        View2DBtn.IsEnabled = false;
+    }
+
+    private string _lastPreviewPng = "";
 
     private async void GenerateBtn_Click(object sender, RoutedEventArgs e)
     {
@@ -74,7 +103,23 @@ public sealed partial class StandeePage : Page
         {
             var result = await Task.Run(() => StandeeGenerator.Generate(options));
             _lastOutputDir = folder.Path;
-            ShowImage(result.PreviewPath);
+            _lastPreviewPng = result.PreviewPath;
+
+            // load the exported OBJ (with texture) into the 3D preview
+            try
+            {
+                var model = await Task.Run(() => Model3D.LoadObj(result.ObjPath));
+                _viewport.SetModel(model);
+                _viewport.AutoSpin = true;
+                View3DBtn.IsEnabled = false;
+                View2DBtn.IsEnabled = true;
+                Show3D();
+            }
+            catch
+            {
+                ShowImage(result.PreviewPath);
+            }
+
             AudioService.Success();
             ShowStatus(
                 "Standee exported",

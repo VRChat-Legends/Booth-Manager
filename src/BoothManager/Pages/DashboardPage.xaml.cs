@@ -13,6 +13,7 @@ public sealed partial class DashboardPage : Page
     public DashboardPage()
     {
         InitializeComponent();
+        Anim.Entrance(RootPanel);
         Loaded += DashboardPage_Loaded;
         Unloaded += (_, _) => _countdownTimer?.Stop();
     }
@@ -115,6 +116,7 @@ public sealed partial class DashboardPage : Page
                 string url = c.PublicUrl;
                 card.PointerReleased += (_, _) => Helpers.OpenUrl(url);
             }
+            Anim.Lift(card);
             LineupPanel.Items.Add(card);
         }
     }
@@ -175,8 +177,10 @@ public sealed partial class DashboardPage : Page
                 Padding = new Thickness(14, 10, 14, 10),
                 Child = panel,
             };
+            Anim.Lift(card);
             RecentList.Children.Add(card);
         }
+        Anim.FadeInChildren(RecentList);
     }
 
     private void GoBoothsBtn_Click(object sender, RoutedEventArgs e) => App.Window?.NavigateTo("booths");

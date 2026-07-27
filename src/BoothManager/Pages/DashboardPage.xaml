@@ -5,7 +5,7 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
     <ScrollViewer>
-        <StackPanel Padding="28" Spacing="18" MaxWidth="980" HorizontalAlignment="Left">
+        <StackPanel x:Name="RootPanel" Padding="28" Spacing="18" MaxWidth="980" HorizontalAlignment="Left">
             <TextBlock x:Name="WelcomeText" Text="Welcome back" FontSize="26" FontWeight="Bold"/>
             <TextBlock x:Name="SubText" Text="Here is what is happening in Legends Alley."
                        Foreground="{StaticResource AlleyMutedBrush}" Margin="0,-12,0,0"/>

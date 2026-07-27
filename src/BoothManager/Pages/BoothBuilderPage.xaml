@@ -7,10 +7,10 @@
     <Grid Padding="20" ColumnSpacing="16">
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="*"/>
-            <ColumnDefinition Width="320"/>
+            <ColumnDefinition Width="330"/>
         </Grid.ColumnDefinitions>
 
-        <!-- 3D viewport -->
+        <!-- 3D teaser viewport -->
         <Border Grid.Column="0" Background="{StaticResource AlleyCardBrush}" BorderBrush="{StaticResource AlleyCardBorderBrush}"
                 BorderThickness="1" CornerRadius="{StaticResource CardRadius}" Padding="2">
             <Grid>
@@ -30,58 +30,30 @@
             </Grid>
         </Border>
 
-        <!-- controls -->
-        <ScrollViewer Grid.Column="1">
-            <StackPanel Spacing="12">
-                <Border Background="{StaticResource AlleyCardBrush}" BorderBrush="{StaticResource AlleyCardBorderBrush}"
-                        BorderThickness="1" CornerRadius="{StaticResource CardRadius}" Padding="16">
-                    <StackPanel Spacing="10">
-                        <TextBlock Text="Booth Builder" FontSize="18" FontWeight="Bold"/>
-                        <TextBlock TextWrapping="Wrap" Foreground="{StaticResource AlleyMutedBrush}" FontSize="12"
-                                   Text="This is the official Legends Alley booth prefab. Pick one of your booths, then drop images onto the poster, screen, and banner slots to see exactly how it will look at the event."/>
-                    </StackPanel>
-                </Border>
-
-                <Border Background="{StaticResource AlleyCardBrush}" BorderBrush="{StaticResource AlleyCardBorderBrush}"
-                        BorderThickness="1" CornerRadius="{StaticResource CardRadius}" Padding="16">
-                    <StackPanel Spacing="10">
-                        <TextBlock Text="Your booth" FontWeight="SemiBold"/>
-                        <ComboBox x:Name="BoothCombo" HorizontalAlignment="Stretch" SelectionChanged="BoothCombo_SelectionChanged"
-                                  PlaceholderText="Select a booth"/>
-                        <TextBlock x:Name="BoothHint" FontSize="11" Foreground="{StaticResource AlleyMutedBrush}"
-                                   TextWrapping="Wrap" Text="Booth images from the Booths tab can be applied to any slot."/>
-                    </StackPanel>
-                </Border>
-
-                <Border Background="{StaticResource AlleyCardBrush}" BorderBrush="{StaticResource AlleyCardBorderBrush}"
-                        BorderThickness="1" CornerRadius="{StaticResource CardRadius}" Padding="16">
-                    <StackPanel Spacing="12">
-                        <TextBlock Text="Image slots" FontWeight="SemiBold"/>
-                        <StackPanel x:Name="SlotList" Spacing="10"/>
-                    </StackPanel>
-                </Border>
-
-                <Border Background="{StaticResource AlleyCardBrush}" BorderBrush="{StaticResource AlleyCardBorderBrush}"
-                        BorderThickness="1" CornerRadius="{StaticResource CardRadius}" Padding="16">
-                    <StackPanel Spacing="10">
-                        <TextBlock Text="View" FontWeight="SemiBold"/>
-                        <Button x:Name="ResetViewBtn" Click="ResetViewBtn_Click" HorizontalAlignment="Stretch">
-                            <StackPanel Orientation="Horizontal" Spacing="8">
-                                <FontIcon Glyph="&#xE72C;" FontSize="14"/>
-                                <TextBlock Text="Reset camera"/>
-                            </StackPanel>
-                        </Button>
-                        <Button x:Name="SnapshotBtn" Click="SnapshotBtn_Click" HorizontalAlignment="Stretch">
-                            <StackPanel Orientation="Horizontal" Spacing="8">
-                                <FontIcon Glyph="&#xE722;" FontSize="14"/>
-                                <TextBlock Text="Save snapshot PNG"/>
-                            </StackPanel>
-                        </Button>
-                        <TextBlock x:Name="SnapshotResult" FontSize="11" Foreground="{StaticResource AlleyTealBrush}"
-                                   Visibility="Collapsed" TextWrapping="Wrap"/>
-                    </StackPanel>
-                </Border>
-            </StackPanel>
-        </ScrollViewer>
+        <!-- coming soon panel -->
+        <StackPanel Grid.Column="1" Spacing="12" VerticalAlignment="Center">
+            <Border Background="{StaticResource AlleyCardBrush}" BorderBrush="{StaticResource AlleyCardBorderBrush}"
+                    BorderThickness="1" CornerRadius="{StaticResource CardRadius}" Padding="24">
+                <StackPanel Spacing="14">
+                    <FontIcon Glyph="&#xE90F;" FontSize="36" Foreground="{StaticResource AlleyTealBrush}" HorizontalAlignment="Center"/>
+                    <TextBlock Text="Booth Builder" FontSize="22" FontWeight="Bold" HorizontalAlignment="Center"/>
+                    <Border Background="#3300E6CC" CornerRadius="20" Padding="14,5" HorizontalAlignment="Center">
+                        <TextBlock Text="COMING SOON" FontSize="12" FontWeight="Bold"
+                                   Foreground="{StaticResource AlleyTealBrush}" CharacterSpacing="150"/>
+                    </Border>
+                    <TextBlock TextWrapping="Wrap" TextAlignment="Center" Foreground="{StaticResource AlleyMutedBrush}" FontSize="12"
+                               Text="That is the official Legends Alley booth prefab rendering live in the app. Soon you will place your own images on the posters and screens, set your group button, avatar pedestal, and world portals, and preview exactly how your booth will look at the event."/>
+                    <TextBlock TextWrapping="Wrap" TextAlignment="Center" Foreground="{StaticResource AlleyMutedBrush}" FontSize="12"
+                               Text="Until then, booth images, group id, avatar id, and world ids all live in the Booths tab."/>
+                    <Button x:Name="OpenBoothsBtn" Click="OpenBoothsBtn_Click" Style="{StaticResource AccentButtonStyle}" HorizontalAlignment="Center">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <FontIcon Glyph="&#xE8B7;" FontSize="14"/>
+                            <TextBlock Text="Open Booths"/>
+                        </StackPanel>
+                    </Button>
+                </StackPanel>
+            </Border>
+            <TextBlock Text="drag to orbit  |  scroll to zoom" FontSize="11" Opacity="0.45" HorizontalAlignment="Center"/>
+        </StackPanel>
     </Grid>
 </Page>
