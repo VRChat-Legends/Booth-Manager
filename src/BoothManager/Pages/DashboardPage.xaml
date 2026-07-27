@@ -10,6 +10,42 @@
             <TextBlock x:Name="SubText" Text="Here is what is happening in Legends Alley."
                        Foreground="{StaticResource AlleyMutedBrush}" Margin="0,-12,0,0"/>
 
+            <!-- event hero -->
+            <Border x:Name="EventHero" Visibility="Collapsed" CornerRadius="{StaticResource CardRadius}" Padding="24,20">
+                <Border.Background>
+                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                        <GradientStop Color="#1A00E6CC" Offset="0"/>
+                        <GradientStop Color="#0D101720" Offset="0.55"/>
+                        <GradientStop Color="#2200E6CC" Offset="1"/>
+                    </LinearGradientBrush>
+                </Border.Background>
+                <Grid ColumnSpacing="18">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Spacing="4" VerticalAlignment="Center">
+                        <TextBlock x:Name="EventName" FontSize="20" FontWeight="Bold"/>
+                        <TextBlock x:Name="EventDate" FontSize="13" Foreground="{StaticResource AlleyMutedBrush}"/>
+                        <TextBlock x:Name="EventLineupNote" FontSize="12" Foreground="{StaticResource AlleyTealBrush}"/>
+                    </StackPanel>
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="14" VerticalAlignment="Center">
+                        <StackPanel Spacing="0">
+                            <TextBlock x:Name="CdDays" Text="--" FontSize="30" FontWeight="Bold" Foreground="{StaticResource AlleyTealBrush}" HorizontalAlignment="Center"/>
+                            <TextBlock Text="DAYS" FontSize="10" Foreground="{StaticResource AlleyMutedBrush}" HorizontalAlignment="Center" CharacterSpacing="120"/>
+                        </StackPanel>
+                        <StackPanel Spacing="0">
+                            <TextBlock x:Name="CdHours" Text="--" FontSize="30" FontWeight="Bold" Foreground="{StaticResource AlleyTealBrush}" HorizontalAlignment="Center"/>
+                            <TextBlock Text="HOURS" FontSize="10" Foreground="{StaticResource AlleyMutedBrush}" HorizontalAlignment="Center" CharacterSpacing="120"/>
+                        </StackPanel>
+                        <StackPanel Spacing="0">
+                            <TextBlock x:Name="CdMins" Text="--" FontSize="30" FontWeight="Bold" Foreground="{StaticResource AlleyTealBrush}" HorizontalAlignment="Center"/>
+                            <TextBlock Text="MINS" FontSize="10" Foreground="{StaticResource AlleyMutedBrush}" HorizontalAlignment="Center" CharacterSpacing="120"/>
+                        </StackPanel>
+                    </StackPanel>
+                </Grid>
+            </Border>
+
             <Grid ColumnSpacing="12">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*"/>
@@ -50,6 +86,12 @@
                         <TextBlock Text="Manage booths"/>
                     </StackPanel>
                 </Button>
+                <Button x:Name="GoBuilderBtn" Click="GoBuilderBtn_Click">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <FontIcon Glyph="&#xE90F;" FontSize="14"/>
+                        <TextBlock Text="3D booth builder"/>
+                    </StackPanel>
+                </Button>
                 <Button x:Name="GoStandeeBtn" Click="GoStandeeBtn_Click">
                     <StackPanel Orientation="Horizontal" Spacing="8">
                         <FontIcon Glyph="&#xE77B;" FontSize="14"/>
@@ -63,6 +105,35 @@
                     </StackPanel>
                 </Button>
             </StackPanel>
+
+            <!-- website quick links -->
+            <Border Background="{StaticResource AlleyCardBrush}" BorderBrush="{StaticResource AlleyCardBorderBrush}"
+                    BorderThickness="1" CornerRadius="{StaticResource CardRadius}" Padding="16,12">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <TextBlock Text="vrchatlegends.com" FontSize="12" Foreground="{StaticResource AlleyMutedBrush}"
+                               VerticalAlignment="Center" Margin="0,0,6,0"/>
+                    <HyperlinkButton x:Name="LinkAlley" Content="/alley" Click="WebLink_Click" Tag="https://vrchatlegends.com/alley" FontSize="12"/>
+                    <HyperlinkButton x:Name="LinkDash" Content="/alley/dashboard" Click="WebLink_Click" Tag="https://vrchatlegends.com/alley/dashboard" FontSize="12"/>
+                    <HyperlinkButton x:Name="LinkAdmin" Content="/alley/admin" Click="WebLink_Click" Tag="https://vrchatlegends.com/alley/admin" FontSize="12" Visibility="Collapsed"/>
+                    <HyperlinkButton x:Name="LinkApply" Content="/alley/apply" Click="WebLink_Click" Tag="https://vrchatlegends.com/alley/apply" FontSize="12"/>
+                </StackPanel>
+            </Border>
+
+            <!-- community lineup -->
+            <Grid>
+                <TextBlock Text="Event lineup" FontSize="18" FontWeight="SemiBold"/>
+                <TextBlock x:Name="LineupCount" HorizontalAlignment="Right" VerticalAlignment="Center"
+                           FontSize="12" Foreground="{StaticResource AlleyMutedBrush}"/>
+            </Grid>
+            <ItemsControl x:Name="LineupPanel">
+                <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <WrapGrid Orientation="Horizontal" MaximumRowsOrColumns="4" ItemWidth="232" ItemHeight="84"/>
+                    </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+            </ItemsControl>
+            <TextBlock x:Name="LineupEmpty" Text="Lineup not announced yet." FontSize="12"
+                       Foreground="{StaticResource AlleyMutedBrush}" Visibility="Collapsed"/>
 
             <TextBlock Text="Your booths" FontSize="18" FontWeight="SemiBold" Margin="0,8,0,0"/>
             <StackPanel x:Name="RecentList" Spacing="8"/>

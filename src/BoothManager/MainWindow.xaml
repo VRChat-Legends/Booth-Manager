@@ -46,6 +46,9 @@
                 <NavigationViewItem x:Name="NavBooths" Content="Booths" Tag="booths">
                     <NavigationViewItem.Icon><FontIcon Glyph="&#xE8B7;"/></NavigationViewItem.Icon>
                 </NavigationViewItem>
+                <NavigationViewItem x:Name="NavAlley" Content="Alley Service" Tag="alley">
+                    <NavigationViewItem.Icon><FontIcon Glyph="&#xE968;"/></NavigationViewItem.Icon>
+                </NavigationViewItem>
                 <NavigationViewItem x:Name="NavBuilder" Content="Booth Builder" Tag="builder">
                     <NavigationViewItem.Icon><FontIcon Glyph="&#xE90F;"/></NavigationViewItem.Icon>
                 </NavigationViewItem>

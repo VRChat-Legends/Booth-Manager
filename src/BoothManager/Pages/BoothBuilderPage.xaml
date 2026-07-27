@@ -4,27 +4,84 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
-    <Grid Padding="28">
-        <Border Background="{StaticResource AlleyCardBrush}" BorderBrush="{StaticResource AlleyCardBorderBrush}"
-                BorderThickness="1" CornerRadius="{StaticResource CardRadius}" Padding="40"
-                MaxWidth="640" HorizontalAlignment="Center" VerticalAlignment="Center">
-            <StackPanel Spacing="16" HorizontalAlignment="Center">
-                <FontIcon Glyph="&#xE90F;" FontSize="44" Foreground="{StaticResource AlleyTealBrush}" HorizontalAlignment="Center"/>
-                <TextBlock Text="Booth Builder" FontSize="26" FontWeight="Bold" HorizontalAlignment="Center"/>
-                <Border Background="#3300E6CC" CornerRadius="20" Padding="14,5" HorizontalAlignment="Center">
-                    <TextBlock Text="COMING SOON" FontSize="12" FontWeight="Bold" Foreground="{StaticResource AlleyTealBrush}" CharacterSpacing="150"/>
+    <Grid Padding="20" ColumnSpacing="16">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*"/>
+            <ColumnDefinition Width="320"/>
+        </Grid.ColumnDefinitions>
+
+        <!-- 3D viewport -->
+        <Border Grid.Column="0" Background="{StaticResource AlleyCardBrush}" BorderBrush="{StaticResource AlleyCardBorderBrush}"
+                BorderThickness="1" CornerRadius="{StaticResource CardRadius}" Padding="2">
+            <Grid>
+                <Grid x:Name="ViewportHost"/>
+                <StackPanel x:Name="ModelMissingPanel" Visibility="Collapsed" Spacing="10"
+                            HorizontalAlignment="Center" VerticalAlignment="Center">
+                    <FontIcon Glyph="&#xE90F;" FontSize="40" Foreground="{StaticResource AlleyMutedBrush}" HorizontalAlignment="Center"/>
+                    <TextBlock Text="Booth model not found" FontSize="16" FontWeight="SemiBold" HorizontalAlignment="Center"/>
+                    <TextBlock Text="Assets\BoothModel\booth.obj is missing from this build."
+                               Foreground="{StaticResource AlleyMutedBrush}" HorizontalAlignment="Center"/>
+                </StackPanel>
+                <ProgressRing x:Name="LoadRing" IsActive="False" Width="44" Height="44"/>
+                <Border x:Name="StatsBadge" Visibility="Collapsed" Background="#CC0D1117" CornerRadius="8" Padding="10,6"
+                        HorizontalAlignment="Left" VerticalAlignment="Top" Margin="12">
+                    <TextBlock x:Name="StatsText" FontSize="11" Foreground="{StaticResource AlleyMutedBrush}"/>
                 </Border>
-                <TextBlock TextWrapping="Wrap" TextAlignment="Center" Foreground="{StaticResource AlleyMutedBrush}"
-                           Text="Build your booth on the official Legends Alley prefab: a live 3D model of the booth where you place your images, set your group button (grp_ id), your VRChat avatar id, and your world ids, then see exactly how it will look in the Alley."/>
-                <TextBlock TextWrapping="Wrap" TextAlignment="Center" Foreground="{StaticResource AlleyMutedBrush}"
-                           Text="Until then, everything the Alley team needs lives in the Booths tab: booth images, group id, avatar id, and world ids you save there are already wired up."/>
-                <Button x:Name="OpenBoothsBtn" Click="OpenBoothsBtn_Click" Style="{StaticResource AccentButtonStyle}" HorizontalAlignment="Center" Margin="0,6,0,0">
-                    <StackPanel Orientation="Horizontal" Spacing="8">
-                        <FontIcon Glyph="&#xE8B7;" FontSize="14"/>
-                        <TextBlock Text="Open Booths"/>
-                    </StackPanel>
-                </Button>
-            </StackPanel>
+            </Grid>
         </Border>
+
+        <!-- controls -->
+        <ScrollViewer Grid.Column="1">
+            <StackPanel Spacing="12">
+                <Border Background="{StaticResource AlleyCardBrush}" BorderBrush="{StaticResource AlleyCardBorderBrush}"
+                        BorderThickness="1" CornerRadius="{StaticResource CardRadius}" Padding="16">
+                    <StackPanel Spacing="10">
+                        <TextBlock Text="Booth Builder" FontSize="18" FontWeight="Bold"/>
+                        <TextBlock TextWrapping="Wrap" Foreground="{StaticResource AlleyMutedBrush}" FontSize="12"
+                                   Text="This is the official Legends Alley booth prefab. Pick one of your booths, then drop images onto the poster, screen, and banner slots to see exactly how it will look at the event."/>
+                    </StackPanel>
+                </Border>
+
+                <Border Background="{StaticResource AlleyCardBrush}" BorderBrush="{StaticResource AlleyCardBorderBrush}"
+                        BorderThickness="1" CornerRadius="{StaticResource CardRadius}" Padding="16">
+                    <StackPanel Spacing="10">
+                        <TextBlock Text="Your booth" FontWeight="SemiBold"/>
+                        <ComboBox x:Name="BoothCombo" HorizontalAlignment="Stretch" SelectionChanged="BoothCombo_SelectionChanged"
+                                  PlaceholderText="Select a booth"/>
+                        <TextBlock x:Name="BoothHint" FontSize="11" Foreground="{StaticResource AlleyMutedBrush}"
+                                   TextWrapping="Wrap" Text="Booth images from the Booths tab can be applied to any slot."/>
+                    </StackPanel>
+                </Border>
+
+                <Border Background="{StaticResource AlleyCardBrush}" BorderBrush="{StaticResource AlleyCardBorderBrush}"
+                        BorderThickness="1" CornerRadius="{StaticResource CardRadius}" Padding="16">
+                    <StackPanel Spacing="12">
+                        <TextBlock Text="Image slots" FontWeight="SemiBold"/>
+                        <StackPanel x:Name="SlotList" Spacing="10"/>
+                    </StackPanel>
+                </Border>
+
+                <Border Background="{StaticResource AlleyCardBrush}" BorderBrush="{StaticResource AlleyCardBorderBrush}"
+                        BorderThickness="1" CornerRadius="{StaticResource CardRadius}" Padding="16">
+                    <StackPanel Spacing="10">
+                        <TextBlock Text="View" FontWeight="SemiBold"/>
+                        <Button x:Name="ResetViewBtn" Click="ResetViewBtn_Click" HorizontalAlignment="Stretch">
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <FontIcon Glyph="&#xE72C;" FontSize="14"/>
+                                <TextBlock Text="Reset camera"/>
+                            </StackPanel>
+                        </Button>
+                        <Button x:Name="SnapshotBtn" Click="SnapshotBtn_Click" HorizontalAlignment="Stretch">
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <FontIcon Glyph="&#xE722;" FontSize="14"/>
+                                <TextBlock Text="Save snapshot PNG"/>
+                            </StackPanel>
+                        </Button>
+                        <TextBlock x:Name="SnapshotResult" FontSize="11" Foreground="{StaticResource AlleyTealBrush}"
+                                   Visibility="Collapsed" TextWrapping="Wrap"/>
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+        </ScrollViewer>
     </Grid>
 </Page>

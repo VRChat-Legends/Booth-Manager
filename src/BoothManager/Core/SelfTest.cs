@@ -55,9 +55,26 @@ public static class SelfTest
         if (!File.Exists(Path.Combine(audioDir, "click.wav"))) throw new InvalidOperationException("click missing");
         if (!File.Exists(Path.Combine(audioDir, "success.wav"))) throw new InvalidOperationException("success missing");
 
+        // 3D pipeline: load the bundled booth model and software-render a frame.
+        string boothObj = Path.Combine(AppContext.BaseDirectory, "Assets", "BoothModel", "booth.obj");
+        if (!File.Exists(boothObj)) throw new InvalidOperationException("booth.obj missing");
+        var model = Model3D.LoadObj(boothObj);
+        if (model.TriangleCount() < 100) throw new InvalidOperationException("booth model too small");
+        var renderer = new SoftRenderer();
+        renderer.Resize(320, 180);
+        renderer.FrameModel(model);
+        renderer.Render(model);
+        bool nonEmpty = false;
+        for (int i = 0; i < renderer.Frame.Length; i += 4096)
+        {
+            if (renderer.Frame[i] != renderer.Frame[0]) { nonEmpty = true; break; }
+        }
+        if (!nonEmpty) throw new InvalidOperationException("render frame looks empty");
+
         string summary =
             $"OK standee: verts={standee.VertexCount} tris={standee.TriangleCount} contour={standee.ContourPointCount}; " +
-            $"atlas: {atlas.Size}x{atlas.Size} placed={atlas.Placed}; music={musicBytes / 1024}KB";
+            $"atlas: {atlas.Size}x{atlas.Size} placed={atlas.Placed}; music={musicBytes / 1024}KB; " +
+            $"booth3d: tris={model.TriangleCount()} mats={model.Materials.Count} rendered";
         File.WriteAllText(Path.Combine(dir, "result.txt"), summary);
         return summary;
     }

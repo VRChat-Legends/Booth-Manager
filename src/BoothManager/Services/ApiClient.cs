@@ -159,4 +159,35 @@ public static class ApiClient
 
     public static Task<ApiResult<JsonElement>> RevokeLinkAsync(string discordId) =>
         SendAsync<JsonElement>(Req(HttpMethod.Delete, $"/admin/links/{Uri.EscapeDataString(discordId)}"));
+
+    // ---- public alley landing (main site API, no auth) ----
+
+    public static async Task<ApiResult<AlleyLanding>> GetAlleyLandingAsync()
+    {
+        var req = new HttpRequestMessage(HttpMethod.Get, AppConfig.Current.ApiBase.TrimEnd('/') + "/api/alley/landing");
+        return await SendAsync<AlleyLanding>(req);
+    }
+}
+
+public sealed class AlleyLandingEvent
+{
+    [JsonPropertyName("id")] public string Id { get; set; } = "";
+    [JsonPropertyName("name")] public string Name { get; set; } = "";
+    [JsonPropertyName("year")] public int Year { get; set; }
+    [JsonPropertyName("displayDate")] public string DisplayDate { get; set; } = "";
+}
+
+public sealed class AlleyLandingCommunity
+{
+    [JsonPropertyName("id")] public string Id { get; set; } = "";
+    [JsonPropertyName("name")] public string Name { get; set; } = "";
+    [JsonPropertyName("description")] public string Description { get; set; } = "";
+    [JsonPropertyName("logoUrl")] public string? LogoUrl { get; set; }
+    [JsonPropertyName("publicUrl")] public string? PublicUrl { get; set; }
+}
+
+public sealed class AlleyLanding
+{
+    [JsonPropertyName("event")] public AlleyLandingEvent? Event { get; set; }
+    [JsonPropertyName("communities")] public List<AlleyLandingCommunity> Communities { get; set; } = new();
 }

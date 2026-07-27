@@ -14,6 +14,13 @@ public sealed class AppConfig
     public bool MusicEnabled { get; set; } = true;
     public bool SfxEnabled { get; set; } = true;
 
+    // Legends Alley service (alley.vrchatlegends.com) session
+    public string AlleyApiBase { get; set; } = "https://alley.vrchatlegends.com";
+    public string AlleyToken { get; set; } = "";
+    public bool AlleyStaff { get; set; }
+    public string AlleyRole { get; set; } = "";
+    public string AlleyCommunityName { get; set; } = "";
+
     public static string Dir =>
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "BoothManager");
 
@@ -72,6 +79,24 @@ public static class Session
     {
         AppConfig.Current.Token = "";
         AppConfig.Current.Role = "";
+        AppConfig.Save();
+    }
+
+    public static void SetAlley(string token, bool staff, string role, string communityName)
+    {
+        AppConfig.Current.AlleyToken = token;
+        AppConfig.Current.AlleyStaff = staff;
+        AppConfig.Current.AlleyRole = role;
+        AppConfig.Current.AlleyCommunityName = communityName;
+        AppConfig.Save();
+    }
+
+    public static void ClearAlley()
+    {
+        AppConfig.Current.AlleyToken = "";
+        AppConfig.Current.AlleyStaff = false;
+        AppConfig.Current.AlleyRole = "";
+        AppConfig.Current.AlleyCommunityName = "";
         AppConfig.Save();
     }
 }

@@ -178,6 +178,7 @@ public sealed partial class MainWindow : Window
         {
             "dashboard" => typeof(DashboardPage),
             "booths" => typeof(BoothsPage),
+            "alley" => typeof(AlleyPage),
             "builder" => typeof(BoothBuilderPage),
             "standee" => typeof(StandeePage),
             "atlas" => typeof(AtlasPage),
