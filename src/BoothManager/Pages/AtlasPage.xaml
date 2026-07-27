@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="BoothManager.Pages.AtlasPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <Grid Padding="24" ColumnSpacing="20">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="380"/>
+            <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+
+        <Grid Grid.Column="0" RowSpacing="12">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+
+            <StackPanel Spacing="12">
+                <TextBlock Text="Image Atlas" FontSize="22" FontWeight="Bold"/>
+                <TextBlock Text="Pack your booth images into one texture atlas (PNG + UV manifest) to keep the Alley light."
+                           Foreground="{StaticResource AlleyMutedBrush}" TextWrapping="Wrap" Margin="0,-4,0,0"/>
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <Button x:Name="AddBtn" Click="AddBtn_Click">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <FontIcon Glyph="&#xE710;" FontSize="12"/>
+                            <TextBlock Text="Add images"/>
+                        </StackPanel>
+                    </Button>
+                    <Button x:Name="ClearBtn" Click="ClearBtn_Click" Content="Clear"/>
+                </StackPanel>
+            </StackPanel>
+
+            <ListView x:Name="FilesList" Grid.Row="1" Background="{StaticResource AlleyCardBrush}"
+                      CornerRadius="{StaticResource CardRadius}" BorderBrush="{StaticResource AlleyCardBorderBrush}"
+                      BorderThickness="1" Padding="4" SelectionMode="None"/>
+
+            <StackPanel Grid.Row="2" Spacing="12">
+                <ComboBox x:Name="SizeCombo" Header="Max atlas size" SelectedIndex="1" HorizontalAlignment="Stretch">
+                    <ComboBoxItem Content="1024 x 1024"/>
+                    <ComboBoxItem Content="2048 x 2048"/>
+                    <ComboBoxItem Content="4096 x 4096"/>
+                </ComboBox>
+                <NumberBox x:Name="PadBox" Header="Padding (px)" Value="2" Minimum="0" Maximum="32" SpinButtonPlacementMode="Inline"/>
+                <StackPanel Orientation="Horizontal" Spacing="10">
+                    <Button x:Name="PackBtn" Click="PackBtn_Click" Style="{StaticResource AccentButtonStyle}" Padding="22,8">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <FontIcon Glyph="&#xE8B9;" FontSize="14"/>
+                            <TextBlock Text="Pack atlas"/>
+                        </StackPanel>
+                    </Button>
+                    <ProgressRing x:Name="Busy" IsActive="False" Width="20" Height="20" VerticalAlignment="Center"/>
+                </StackPanel>
+                <InfoBar x:Name="StatusBar" IsOpen="False"/>
+            </StackPanel>
+        </Grid>
+
+        <Border Grid.Column="1" Background="{StaticResource AlleyCardBrush}" BorderBrush="{StaticResource AlleyCardBorderBrush}"
+                BorderThickness="1" CornerRadius="{StaticResource CardRadius}" Padding="16">
+            <Grid>
+                <TextBlock x:Name="PreviewPlaceholder" Text="The packed atlas preview appears here."
+                           Foreground="{StaticResource AlleyMutedBrush}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                <Image x:Name="AtlasPreview" Stretch="Uniform"/>
+            </Grid>
+        </Border>
+    </Grid>
+</Page>

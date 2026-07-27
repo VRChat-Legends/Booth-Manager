@@ -1,0 +1,28 @@
+BOOTH MANAGER - PROPRIETARY LICENSE
+
+Copyright (c) 2026 VRChat Legends. All rights reserved.
+
+This software and its source code (the "Software") are the exclusive
+property of VRChat Legends and its contributors.
+
+Permission is granted to authorized members of the VRChat Legends team to
+use the Software for VRChat Legends community activities (including
+Legends Alley events).
+
+Except as expressly permitted above, no permission is granted to any
+person to copy, modify, merge, publish, distribute, sublicense, sell,
+or create derivative works of the Software, in whole or in part,
+without the prior written consent of VRChat Legends.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+IN NO EVENT SHALL VRCHAT LEGENDS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+OTHER LIABILITY ARISING FROM THE USE OF THE SOFTWARE.
+
+---
+
+Attribution note: the cardboard standee feature is an original C#
+implementation inspired by the "Auto-Standee" project concept by
+Sketch494 (https://github.com/Sketch494/Auto-Standee). No GPL-licensed
+source code from that project is included in this Software.

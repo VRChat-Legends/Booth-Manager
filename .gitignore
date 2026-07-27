@@ -1,0 +1,24 @@
+# .NET / WinUI
+bin/
+obj/
+*.user
+*.suo
+.vs/
+*.binlog
+*build*.txt
+
+# WinUI / MSIX
+AppPackages/
+BundleArtifacts/
+*.pfx
+*.appx
+*.msix
+
+# NuGet
+*.nupkg
+packages/
+
+# Logs / temp
+*.log
+*.tmp
+TestResults/

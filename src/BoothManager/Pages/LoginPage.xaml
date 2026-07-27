@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="BoothManager.Pages.LoginPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <Grid>
+        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="14" MaxWidth="420">
+            <Image Source="ms-appx:///Assets/legends_alley_logo.png" Width="110" Height="110" Margin="0,0,0,4"/>
+            <TextBlock Text="BOOTH MANAGER" FontSize="30" FontWeight="Bold" HorizontalAlignment="Center" CharacterSpacing="120"/>
+            <TextBlock Text="The Legends Alley booth toolkit" Foreground="{StaticResource AlleyMutedBrush}" HorizontalAlignment="Center" Margin="0,-8,0,8"/>
+
+            <Button x:Name="LoginBtn" Click="LoginBtn_Click" HorizontalAlignment="Center"
+                    Background="#5865F2" Foreground="White" Padding="26,12" CornerRadius="8">
+                <StackPanel Orientation="Horizontal" Spacing="10">
+                    <FontIcon Glyph="&#xE8D7;" FontSize="16"/>
+                    <TextBlock Text="Login with Discord" FontWeight="SemiBold"/>
+                </StackPanel>
+            </Button>
+
+            <StackPanel x:Name="WaitPanel" Orientation="Horizontal" Spacing="10" HorizontalAlignment="Center" Visibility="Collapsed">
+                <ProgressRing IsActive="True" Width="18" Height="18"/>
+                <TextBlock Text="Finish signing in inside your browser..." Foreground="{StaticResource AlleyMutedBrush}"/>
+            </StackPanel>
+
+            <InfoBar x:Name="ErrorBar" IsOpen="False" Severity="Error" IsClosable="True"/>
+
+            <TextBlock Text="Access is limited to VRChat Legends site admins and team members."
+                       Foreground="{StaticResource AlleyMutedBrush}" FontSize="12"
+                       HorizontalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap" Margin="0,10,0,0"/>
+        </StackPanel>
+    </Grid>
+</Page>
