@@ -1474,6 +1474,8 @@ img.room-mark { display: block; }
   justify-content: center;
   width: 26px;
   height: 26px;
+  min-height: 26px;
+  padding: 0;
   flex: 0 0 auto;
   border: 1px solid var(--border-soft);
   border-radius: 6px;
