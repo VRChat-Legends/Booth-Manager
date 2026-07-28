@@ -60,11 +60,13 @@ export default function DashboardPage({ cfg, isAdmin, goTo, event }) {
           <div className="grow">
             <h2>{event?.name || "Legends Alley"}</h2>
             <div className="date">
-              {event?.startsAt ? `${api.formatDate(event.startsAt)}${event.timezone ? ` (${event.timezone})` : ""}` : "Event schedule pending"}
+              {event?.startsAt
+                ? `${api.formatDate(event.startsAt)}${event.timezone ? ` (${event.timezone})` : ""}`
+                : event ? "Event schedule pending" : "Syncing event details..."}
             </div>
             <div className="event-state-line">
               <span className={`service-dot${event?.acceptingBooths ? " online" : ""}`} />
-              {event?.acceptingBooths ? "Uploads are open" : "Uploads are closed"}
+              {event ? (event.acceptingBooths ? "Uploads are open" : "Uploads are closed") : "Checking upload status..."}
             </div>
           </div>
           {countdown && (

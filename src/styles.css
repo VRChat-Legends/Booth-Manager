@@ -1603,3 +1603,17 @@ button.fv-dir:hover { border-color: var(--border-soft); background: rgba(255, 25
   .mention-popup { right: 8px; left: 8px; }
   .upload-details-facts { grid-template-columns: repeat(auto-fill, minmax(128px, 1fr)); }
 }
+
+/* ---------- v2.1.1 polish ---------- */
+
+/* while any modal is open the page behind must not show its scrollbar */
+.content:has(.modal-scrim) { overflow: hidden; }
+.modal-scrim { overscroll-behavior: contain; }
+
+/* avatars must never stretch, whatever shape the source image is */
+.userchip img { object-fit: cover; flex: 0 0 auto; }
+.sidebar .brand img { object-fit: contain; flex: 0 0 auto; }
+
+/* locked room marker in the rooms list (real icon, not an emoji) */
+.chat-room strong { display: inline-flex; align-items: center; gap: 4px; }
+.room-locked-mark { flex: 0 0 auto; color: var(--warn); }

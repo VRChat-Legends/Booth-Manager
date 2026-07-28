@@ -194,16 +194,18 @@ ipcMain.handle("alley:request", async (_e, pathName, options) => {
   if (pathName === "/api/auth/me" && res.status === 200 && res.data) {
     const community = res.data.community || null;
     const user = res.data.user || null;
+    // Cosmetic identity fields (avatar, username, logo) fall back to the last
+    // known value instead of blanking when the service omits them.
     writeConfig({
       alleyStaff: res.data.staff === true,
       alleyRole: String(res.data.role || ""),
       alleyCommunityName: community ? String(community.name || "") : "",
       alleyCommunityId: community ? String(community.id || "") : "",
       alleyGroupId: community ? String(community.groupId || "") : "",
-      alleyLogoUrl: community ? String(community.logoUrl || "") : cfg.alleyLogoUrl,
-      alleyDiscordId: user ? String(user.discordUserId || "") : cfg.alleyDiscordId,
-      alleyUsername: user ? String(user.username || "") : cfg.alleyUsername,
-      alleyAvatarUrl: user ? String(user.avatarUrl || "") : cfg.alleyAvatarUrl
+      alleyLogoUrl: community ? (String(community.logoUrl || "") || cfg.alleyLogoUrl) : cfg.alleyLogoUrl,
+      alleyDiscordId: user ? (String(user.discordUserId || "") || cfg.alleyDiscordId) : cfg.alleyDiscordId,
+      alleyUsername: user ? (String(user.username || "") || cfg.alleyUsername) : cfg.alleyUsername,
+      alleyAvatarUrl: user ? (String(user.avatarUrl || "") || cfg.alleyAvatarUrl) : cfg.alleyAvatarUrl
     });
     if (!user) fillIdentityFromToken();
   }
@@ -280,26 +282,56 @@ ipcMain.handle("alley:image", async (_e, pathOrUrl) => {
 // ------------------------------------------------------------------
 
 const GITHUB_REPO = "VRChat-Legends/Booth-Manager";
+const GITHUB_RELEASES_PATH = `/repos/${GITHUB_REPO}/releases?per_page=20`;
+const GITHUB_ISSUES_PATH = `/repos/${GITHUB_REPO}/issues?state=all&per_page=50`;
+const GITHUB_TTL_MS = 10 * 60 * 1000;
 const githubCache = new Map();
+const githubCacheFile = () => path.join(app.getPath("userData"), "github-cache.json");
 
-async function githubGet(apiPath) {
-  const cached = githubCache.get(apiPath);
-  if (cached && Date.now() - cached.at < 10 * 60 * 1000) return cached.value;
+function readGithubDisk() {
+  try { return JSON.parse(fs.readFileSync(githubCacheFile(), "utf8")); } catch { return {}; }
+}
+
+async function githubFetch(apiPath) {
   try {
     const res = await fetch(`https://api.github.com${apiPath}`, {
       headers: { "User-Agent": "BoothManager", Accept: "application/vnd.github+json" }
     });
     if (!res.ok) return { status: res.status, data: null, error: `GitHub returned HTTP ${res.status}` };
     const value = { status: res.status, data: await res.json(), error: "" };
-    githubCache.set(apiPath, { at: Date.now(), value });
+    const entry = { at: Date.now(), value };
+    githubCache.set(apiPath, entry);
+    try {
+      const disk = readGithubDisk();
+      disk[apiPath] = entry;
+      fs.writeFileSync(githubCacheFile(), JSON.stringify(disk));
+    } catch { /* cache write is best effort */ }
     return value;
   } catch (ex) {
     return { status: 0, data: null, error: String(ex && ex.message ? ex.message : ex) };
   }
 }
 
-ipcMain.handle("github:releases", async () => githubGet(`/repos/${GITHUB_REPO}/releases?per_page=20`));
-ipcMain.handle("github:issues", async () => githubGet(`/repos/${GITHUB_REPO}/issues?state=all&per_page=50`));
+// Stale-while-revalidate: any cached copy (memory or disk) renders the page
+// instantly; an expired copy kicks off a background refresh for next time.
+async function githubGet(apiPath) {
+  let cached = githubCache.get(apiPath);
+  if (!cached) {
+    const disk = readGithubDisk()[apiPath];
+    if (disk && disk.value) {
+      cached = disk;
+      githubCache.set(apiPath, disk);
+    }
+  }
+  if (cached && cached.value && cached.value.status === 200) {
+    if (Date.now() - cached.at >= GITHUB_TTL_MS) githubFetch(apiPath).catch(() => {});
+    return cached.value;
+  }
+  return await githubFetch(apiPath);
+}
+
+ipcMain.handle("github:releases", async () => githubGet(GITHUB_RELEASES_PATH));
+ipcMain.handle("github:issues", async () => githubGet(GITHUB_ISSUES_PATH));
 
 // ------------------------------------------------------------------
 // IPC: file dialogs + disk io for standee outputs
@@ -712,6 +744,9 @@ app.whenReady().then(() => {
   applyLoginItemSettings();
   createWindow();
   createTray();
+  // Warm the changelog + bug tracker caches so those pages open instantly.
+  githubGet(GITHUB_RELEASES_PATH).catch(() => {});
+  githubGet(GITHUB_ISSUES_PATH).catch(() => {});
   updater.start((state) => {
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send("updates:state", state);

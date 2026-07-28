@@ -118,13 +118,15 @@ export default function App() {
     const load = async () => {
       let result = await api.alley("/api/events/current");
       if (result.status === 200) {
-        if (!disposed) setEvent(result.data?.event || null);
+        if (!disposed && result.data?.event) setEvent(result.data.event);
         return;
       }
+      if (result.status !== 404) return; // transient failure (rate limit, offline): keep the last good event
       result = await api.alley("/api/events");
+      if (result.status !== 200) return;
       const events = result.data?.events || [];
       const selected = events.find((item) => item.active) || events[0] || null;
-      if (!disposed) setEvent(selected);
+      if (!disposed && selected) setEvent(selected);
     };
     load();
     const timer = window.setInterval(load, 60_000);
@@ -319,9 +321,7 @@ export default function App() {
           </div>
           <div className="spacer" />
           <div className="community-chip">
-            {cfg.alleyLogoUrl
-              ? <img className="chip-logo" src={cfg.alleyLogoUrl} alt="" />
-              : <Building2 size={15} />}
+            <FallbackImage className="chip-logo" src={cfg.alleyLogoUrl} fallback={<Building2 size={15} />} />
             <span>
               <strong>{cfg.alleyCommunityName || "Alley Staff"}</strong>
               <small>{cfg.alleyGroupId || (isStaff ? "All communities" : "Group ID pending")}</small>
@@ -329,9 +329,10 @@ export default function App() {
             <span className="rolebadge">{String(cfg.alleyRole || (isStaff ? "staff" : "team")).toUpperCase()}</span>
           </div>
           <div className="userchip">
-            {cfg.alleyAvatarUrl
-              ? <img src={cfg.alleyAvatarUrl} alt="" />
-              : <div className="avatar compact-avatar">{(cfg.alleyUsername || "?")[0]?.toUpperCase()}</div>}
+            <FallbackImage
+              src={cfg.alleyAvatarUrl}
+              fallback={<div className="avatar compact-avatar">{(cfg.alleyUsername || "?")[0]?.toUpperCase()}</div>}
+            />
             <span className="name">{cfg.alleyUsername || "Signed in"}</span>
           </div>
         </header>
@@ -357,6 +358,15 @@ export default function App() {
       )}
     </div>
   );
+}
+
+/** Image that swaps to a fallback node when the source is empty or fails
+ * to load (expired Discord avatar, rate-limited logo fetch, offline). */
+function FallbackImage({ src, className, fallback }) {
+  const [failed, setFailed] = useState(false);
+  useEffect(() => setFailed(false), [src]);
+  if (!src || failed) return fallback || null;
+  return <img className={className} src={src} alt="" onError={() => setFailed(true)} />;
 }
 
 function BroadcastPopup({ broadcast, onDismiss }) {

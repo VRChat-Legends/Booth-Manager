@@ -5,8 +5,14 @@ import * as audio from "../lib/audio.js";
 
 export default function AlleyDashboardPage({ cfg, refreshConfig }) {
   const [me, setMe] = useState(null);
-  const [tab, setTab] = useState("overview");
+  // remembered across page switches so returning here reopens the same tab
+  const [tab, setTab] = useState(() => window.sessionStorage.getItem("communityTab") || "overview");
   const [error, setError] = useState("");
+
+  const switchTab = (id) => {
+    setTab(id);
+    window.sessionStorage.setItem("communityTab", id);
+  };
 
   const load = useCallback(async () => {
     if (!cfg.alleyToken) return;
@@ -57,7 +63,7 @@ export default function AlleyDashboardPage({ cfg, refreshConfig }) {
         <>
           <div className="tabs">
             {["overview", "profile", "team", "booths"].map((t) => (
-              <div key={t} className={`tab${tab === t ? " active" : ""}`} onClick={() => setTab(t)}>
+              <div key={t} className={`tab${tab === t ? " active" : ""}`} onClick={() => switchTab(t)}>
                 {t === "overview" ? "Overview" : t === "profile" ? "Profile" : t === "team" ? "Team" : "Booths"}
               </div>
             ))}

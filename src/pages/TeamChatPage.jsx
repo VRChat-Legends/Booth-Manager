@@ -38,11 +38,13 @@ export default function TeamChatPage({ cfg }) {
   const [pendingFiles, setPendingFiles] = useState([]);
   const [transfers, setTransfers] = useState({});
   const [error, setError] = useState("");
+  const [hint, setHint] = useState("");
   const [sending, setSending] = useState(false);
   const [loading, setLoading] = useState(false);
   const feedRef = useRef(null);
   const inputRef = useRef(null);
   const initialLoad = useRef(true);
+  const hintTimerRef = useRef(0);
   const seenRef = useRef({ ids: new Set(), primed: false });
   const lastSendRef = useRef(0);
   const ownId = String(cfg.alleyDiscordId || "");
@@ -114,6 +116,7 @@ export default function TeamChatPage({ cfg }) {
     }
     initialLoad.current = true;
     seenRef.current = { ids: new Set(), primed: false };
+    setError("");
     loadMessages();
     const timer = window.setInterval(() => loadMessages(true), 3000);
     api.alley(`/api/chat/members?communityId=${encodeURIComponent(selectedId)}`).then((result) => {
@@ -122,14 +125,43 @@ export default function TeamChatPage({ cfg }) {
     return () => window.clearInterval(timer);
   }, [selectedId, loadMessages]);
 
+  // Instant jump (bypasses the feed's smooth scrolling) so opening a room
+  // lands on the newest messages, not an animated crawl from the top.
+  const scrollFeedToBottom = useCallback(() => {
+    const feed = feedRef.current;
+    if (!feed) return;
+    feed.style.scrollBehavior = "auto";
+    feed.scrollTop = feed.scrollHeight;
+    feed.style.scrollBehavior = "";
+  }, []);
+
   useEffect(() => {
     const feed = feedRef.current;
     if (!feed) return;
     if (initialLoad.current || feed.scrollHeight - feed.scrollTop - feed.clientHeight < 160) {
-      feed.scrollTop = feed.scrollHeight;
-      initialLoad.current = false;
+      scrollFeedToBottom();
+      if (initialLoad.current && messages.length) {
+        initialLoad.current = false;
+        requestAnimationFrame(scrollFeedToBottom);
+      }
     }
-  }, [messages]);
+  }, [messages, scrollFeedToBottom]);
+
+  // Images and videos grow the feed after the initial jump; capture their
+  // load events and stay pinned to the bottom while the user is near it.
+  useEffect(() => {
+    const feed = feedRef.current;
+    if (!feed) return undefined;
+    const onMediaLoad = () => {
+      if (feed.scrollHeight - feed.scrollTop - feed.clientHeight < 300) scrollFeedToBottom();
+    };
+    feed.addEventListener("load", onMediaLoad, true);
+    feed.addEventListener("loadedmetadata", onMediaLoad, true);
+    return () => {
+      feed.removeEventListener("load", onMediaLoad, true);
+      feed.removeEventListener("loadedmetadata", onMediaLoad, true);
+    };
+  }, [scrollFeedToBottom]);
 
   useEffect(() => {
     for (const message of messages) {
@@ -226,6 +258,12 @@ export default function TeamChatPage({ cfg }) {
     }
   };
 
+  const flashHint = (text) => {
+    setHint(text);
+    window.clearTimeout(hintTimerRef.current);
+    hintTimerRef.current = window.setTimeout(() => setHint(""), 4000);
+  };
+
   const removeMessage = async (message) => {
     const result = await api.alley(
       `/api/chat/messages/${encodeURIComponent(message.id)}?communityId=${encodeURIComponent(selectedId)}`,
@@ -272,13 +310,9 @@ export default function TeamChatPage({ cfg }) {
         {!rooms && <div className="skeleton" style={{ height: 180 }} />}
         {(rooms || []).map((candidate) => (
           <button key={candidate.communityId} className={`chat-room${selectedId === candidate.communityId ? " active" : ""}`} onClick={() => setSelectedId(candidate.communityId)}>
-            {candidate.global
-              ? <span className="room-mark global"><Globe size={13} /></span>
-              : candidate.logoUrl
-                ? <img className="room-mark img" src={candidate.logoUrl} alt="" />
-                : <span className="room-mark">{(candidate.name || "?")[0]?.toUpperCase()}</span>}
+            <RoomLogo url={candidate.logoUrl} name={candidate.name} global={candidate.global} />
             <span>
-              <strong>{candidate.name}{candidate.locked ? " \uD83D\uDD12" : ""}</strong>
+              <strong>{candidate.name}{candidate.locked ? <Lock size={9} className="room-locked-mark" /> : null}</strong>
               <small>{candidate.global ? "Every Alley community" : candidate.lastMessage || candidate.groupId || "No messages yet"}</small>
             </span>
           </button>
@@ -287,11 +321,12 @@ export default function TeamChatPage({ cfg }) {
 
       <section className="conversation">
         <header className="conversation-header">
-          {isGlobal
-            ? <div className="room-mark large global"><Globe size={18} /></div>
-            : roomLogo
-              ? <img className="room-mark large img" src={roomLogo} alt="" />
-              : <div className="room-mark large">{(room?.name || selectedRoom?.name || cfg.alleyCommunityName || "?")[0]?.toUpperCase()}</div>}
+          <RoomLogo
+            large
+            url={roomLogo}
+            name={room?.name || selectedRoom?.name || cfg.alleyCommunityName}
+            global={isGlobal}
+          />
           <div>
             <h2>{room?.name || selectedRoom?.name || cfg.alleyCommunityName || "Team chat"}</h2>
             <span><Users size={13} />{isGlobal ? "Open to every Alley community" : `${selectedRoom?.memberCount || "Community"} team members${room?.groupId ? ` | ${room.groupId}` : ""}`}</span>
@@ -321,9 +356,7 @@ export default function TeamChatPage({ cfg }) {
             const deletable = own || canModerate;
             return (
               <div key={message.id} className={`message${own ? " own" : ""}${grouped ? " grouped" : ""}`}>
-                {!grouped && (avatarUrl
-                  ? <img src={avatarUrl} alt="" />
-                  : <div className="message-avatar">{(message.authorName || "?")[0]?.toUpperCase()}</div>)}
+                {!grouped && <MessageAvatar url={avatarUrl} name={message.authorName} />}
                 <div className="message-content">
                   {!grouped && <div className="message-meta"><strong>{own ? "You" : message.authorName}</strong><span className="author-role">{message.authorRole}</span><span>{api.formatDate(message.createdAt)}</span></div>}
                   {message.body && (
@@ -336,7 +369,17 @@ export default function TeamChatPage({ cfg }) {
                   ))}
                 </div>
                 {deletable && (
-                  <button className="message-delete" title={own ? "Delete your message" : "Delete message (moderation)"} onClick={() => removeMessage(message)}>
+                  <button
+                    className="message-delete"
+                    title="Hold Shift and click to delete"
+                    onClick={(clickEvent) => {
+                      if (!clickEvent.shiftKey) {
+                        flashHint("Hold Shift and click the trash icon to delete a message.");
+                        return;
+                      }
+                      removeMessage(message);
+                    }}
+                  >
                     <Trash2 size={13} />
                   </button>
                 )}
@@ -345,7 +388,7 @@ export default function TeamChatPage({ cfg }) {
           })}
         </div>
 
-        {error && <div className="chat-error">{error}</div>}
+        {(error || hint) && <div className="chat-error">{error || hint}</div>}
         {locked && (
           <div className="chat-locked-banner">
             <Lock size={14} />
@@ -429,6 +472,24 @@ export default function TeamChatPage({ cfg }) {
       </section>
     </div>
   );
+}
+
+/** Room logo that falls back to the community initial when the image is
+ * missing or fails to load (offline service, rate limit, deleted logo). */
+function RoomLogo({ url, name, global, large }) {
+  const [failed, setFailed] = useState(false);
+  useEffect(() => setFailed(false), [url]);
+  const sizeClass = `room-mark${large ? " large" : ""}`;
+  if (global) return <span className={`${sizeClass} global`}><Globe size={large ? 18 : 13} /></span>;
+  if (url && !failed) return <img className={`${sizeClass} img`} src={url} alt="" onError={() => setFailed(true)} />;
+  return <span className={sizeClass}>{(name || "?")[0]?.toUpperCase()}</span>;
+}
+
+function MessageAvatar({ url, name }) {
+  const [failed, setFailed] = useState(false);
+  useEffect(() => setFailed(false), [url]);
+  if (url && !failed) return <img src={url} alt="" onError={() => setFailed(true)} />;
+  return <div className="message-avatar">{(name || "?")[0]?.toUpperCase()}</div>;
 }
 
 function AutoPauseVideo({ src }) {

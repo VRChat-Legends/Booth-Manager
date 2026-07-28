@@ -7,10 +7,16 @@ import { AlleyBoothRow } from "./AlleyDashboardPage.jsx";
 
 export default function AlleyAdminPage({ cfg }) {
   const isStaff = cfg.alleyStaff === true;
-  const [tab, setTab] = useState("applications");
+  // remembered across page switches so returning here reopens the same tab
+  const [tab, setTab] = useState(() => window.sessionStorage.getItem("alleyAdminTab") || "applications");
   const [error, setError] = useState("");
   const [counts, setCounts] = useState({ pending: 0, communities: 0, booths: 0 });
   const [composing, setComposing] = useState(false);
+
+  const switchTab = (id) => {
+    setTab(id);
+    window.sessionStorage.setItem("alleyAdminTab", id);
+  };
 
   useEffect(() => {
     if (!isStaff) return;
@@ -55,7 +61,7 @@ export default function AlleyAdminPage({ cfg }) {
 
       <div className="tabs">
         {[["applications", "Applications"], ["communities", "Communities"], ["events", "Events"], ["booths", "Booths"]].map(([id, label]) => (
-          <div key={id} className={`tab${tab === id ? " active" : ""}`} onClick={() => setTab(id)}>
+          <div key={id} className={`tab${tab === id ? " active" : ""}`} onClick={() => switchTab(id)}>
             {label}{id === "applications" && counts.pending > 0 && <span className="count">{counts.pending}</span>}
           </div>
         ))}
