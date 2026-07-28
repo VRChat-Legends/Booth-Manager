@@ -1,0 +1,331 @@
+import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  Box,
+  Boxes,
+  Building2,
+  LayoutDashboard,
+  LockKeyhole,
+  MessageSquareText,
+  Settings,
+  ShieldCheck,
+  Sparkles,
+  UploadCloud
+} from "lucide-react";
+import * as api from "./lib/api.js";
+import * as audio from "./lib/audio.js";
+import peerFiles from "./lib/peerFiles.js";
+import LoginPage from "./pages/LoginPage.jsx";
+import DashboardPage from "./pages/DashboardPage.jsx";
+import BoothsPage from "./pages/BoothsPage.jsx";
+import AlleyDashboardPage from "./pages/AlleyDashboardPage.jsx";
+import AlleyAdminPage from "./pages/AlleyAdminPage.jsx";
+import StandeePage from "./pages/StandeePage.jsx";
+import SettingsPage from "./pages/SettingsPage.jsx";
+import TeamChatPage from "./pages/TeamChatPage.jsx";
+import logoUrl from "../assets/app-icon.png";
+
+const NAV = [
+  { section: "Workspace" },
+  { id: "dashboard", label: "Dashboard", Icon: LayoutDashboard },
+  { id: "booths", label: "Booth Backups", Icon: Boxes },
+  { id: "chat", label: "Team Chat", Icon: MessageSquareText },
+  { section: "Alley service" },
+  { id: "alleyDashboard", label: "Community", Icon: Building2, communityOnly: true },
+  { id: "alleyAdmin", label: "Alley Admin", Icon: ShieldCheck, staffOnly: true },
+  { section: "Tools" },
+  { id: "builder", label: "Booth Builder", Icon: Box, badge: "Soon", disabled: true },
+  { id: "standee", label: "Standee Studio", Icon: Sparkles }
+];
+
+const TITLES = {
+  dashboard: "Dashboard",
+  booths: "Booth Backups",
+  chat: "Team Chat",
+  alleyDashboard: "Community",
+  alleyAdmin: "Alley Admin",
+  standee: "Standee Studio",
+  settings: "Settings"
+};
+
+export default function App() {
+  const [cfg, setCfg] = useState(null);
+  const [page, setPage] = useState("dashboard");
+  const [checking, setChecking] = useState(true);
+  const [loginError, setLoginError] = useState("");
+  const [event, setEvent] = useState(null);
+  const [newUploads, setNewUploads] = useState([]);
+  const [update, setUpdate] = useState(null);
+  const [updateDismissed, setUpdateDismissed] = useState(false);
+
+  const refreshConfig = useCallback(async () => {
+    const next = await api.getConfig();
+    setCfg(next);
+    return next;
+  }, []);
+
+  useEffect(() => {
+    let disposed = false;
+    (async () => {
+      const current = await refreshConfig();
+      audio.setSfxEnabled(current.sfxEnabled !== false);
+      if (current.alleyToken) {
+        const result = await api.alley("/api/auth/me");
+        if (!disposed && (result.status === 401 || result.status === 403)) {
+          setLoginError(result.error || "Your Alley session expired. Sign in again.");
+        }
+        await refreshConfig();
+      }
+      if (!disposed) setChecking(false);
+    })();
+
+    const off = api.onUpdateState(setUpdate);
+    api.getUpdateState().then(setUpdate);
+    const onClick = (pointerEvent) => {
+      if (pointerEvent.target.closest("button, .navitem, .tab, .clickable")) audio.click();
+    };
+    window.addEventListener("pointerdown", onClick, true);
+    return () => {
+      disposed = true;
+      off?.();
+      window.removeEventListener("pointerdown", onClick, true);
+    };
+  }, [refreshConfig]);
+
+  useEffect(() => {
+    if (!cfg?.alleyToken) {
+      setEvent(null);
+      return undefined;
+    }
+    let disposed = false;
+    const load = async () => {
+      let result = await api.alley("/api/events/current");
+      if (result.status === 200) {
+        if (!disposed) setEvent(result.data?.event || null);
+        return;
+      }
+      result = await api.alley("/api/events");
+      const events = result.data?.events || [];
+      const selected = events.find((item) => item.active) || events[0] || null;
+      if (!disposed) setEvent(selected);
+    };
+    load();
+    const timer = window.setInterval(load, 60_000);
+    return () => {
+      disposed = true;
+      window.clearInterval(timer);
+    };
+  }, [cfg?.alleyToken]);
+
+  useEffect(() => {
+    if (!cfg?.alleyToken || !cfg?.alleyDiscordId) {
+      peerFiles.stop();
+      return undefined;
+    }
+    peerFiles.start({
+      userId: cfg.alleyDiscordId,
+      communityId: cfg.alleyCommunityId,
+      staff: cfg.alleyStaff === true
+    });
+    return () => peerFiles.stop();
+  }, [cfg?.alleyToken, cfg?.alleyDiscordId, cfg?.alleyCommunityId, cfg?.alleyStaff]);
+
+  useEffect(() => {
+    if (!cfg?.alleyToken || !cfg?.alleyCommunityId) {
+      setNewUploads([]);
+      return undefined;
+    }
+    let disposed = false;
+    const check = async () => {
+      const result = await api.alley("/api/booths/mine");
+      if (result.status !== 200 || disposed) return;
+      const uploads = result.data?.booths || [];
+      const ids = uploads.map((booth) => String(booth.id));
+      if (cfg.seenBoothUploadsInitialized !== true) {
+        const saved = await api.saveConfig({ seenBoothUploadIds: ids, seenBoothUploadsInitialized: true });
+        if (!disposed) setCfg(saved);
+        return;
+      }
+      const seen = new Set((cfg.seenBoothUploadIds || []).map(String));
+      setNewUploads(uploads.filter((booth) => !seen.has(String(booth.id))));
+    };
+    check();
+    const timer = window.setInterval(check, 60_000);
+    return () => {
+      disposed = true;
+      window.clearInterval(timer);
+    };
+  }, [cfg?.alleyToken, cfg?.alleyCommunityId, cfg?.seenBoothUploadsInitialized, cfg?.seenBoothUploadIds]);
+
+  useEffect(() => {
+    if (!cfg?.alleyToken) return undefined;
+    const start = () => {
+      if (cfg.musicEnabled !== false) audio.setMusicEnabled(true);
+      window.removeEventListener("pointerdown", start);
+    };
+    window.addEventListener("pointerdown", start);
+    return () => window.removeEventListener("pointerdown", start);
+  }, [cfg?.alleyToken, cfg?.musicEnabled]);
+
+  const loggedIn = Boolean(cfg?.alleyToken);
+  const isStaff = cfg?.alleyStaff === true;
+  const appLocked = event?.appLocked === true && !isStaff;
+  const effectivePage = appLocked && page !== "settings" ? "booths" : page;
+
+  const visibleNav = useMemo(
+    () => NAV.filter((item) => item.section || ((!item.staffOnly || isStaff) && (!item.communityOnly || cfg?.alleyCommunityId))),
+    [isStaff, cfg?.alleyCommunityId]
+  );
+
+  const login = useCallback(async () => {
+    setLoginError("");
+    const result = await api.alleyLogin();
+    if (!result.ok) {
+      setLoginError(result.error === "timeout" ? "Sign in timed out. Try again." : String(result.error || "Sign in failed."));
+      return;
+    }
+    audio.success();
+    await api.alley("/api/auth/me");
+    await refreshConfig();
+    setPage("dashboard");
+  }, [refreshConfig]);
+
+  const logout = useCallback(async () => {
+    peerFiles.stop();
+    await api.alleyLogout();
+    audio.setMusicEnabled(false);
+    await refreshConfig();
+  }, [refreshConfig]);
+
+  const acknowledgeUploads = useCallback(async () => {
+    if (!newUploads.length) return;
+    const ids = [...new Set([
+      ...(cfg.seenBoothUploadIds || []).map(String),
+      ...newUploads.map((booth) => String(booth.id))
+    ])];
+    const saved = await api.saveConfig({ seenBoothUploadIds: ids, seenBoothUploadsInitialized: true });
+    setCfg(saved);
+    setNewUploads([]);
+  }, [cfg, newUploads]);
+
+  if (checking) return <div className="login-wrap"><div className="spinner" /></div>;
+  if (!loggedIn) return <LoginPage onLogin={login} error={loginError} logoUrl={logoUrl} />;
+
+  const PageComponent = {
+    dashboard: DashboardPage,
+    booths: BoothsPage,
+    chat: TeamChatPage,
+    alleyDashboard: AlleyDashboardPage,
+    alleyAdmin: AlleyAdminPage,
+    standee: StandeePage,
+    settings: SettingsPage
+  }[effectivePage] || DashboardPage;
+
+  return (
+    <div className="shell">
+      <aside className="sidebar">
+        <div className="brand">
+          <img src={logoUrl} alt="" />
+          <div><div className="t1">Booth Manager</div><div className="t2">Legends Alley</div></div>
+        </div>
+        {visibleNav.map((item, index) => item.section ? (
+          <div key={`section-${index}`} className="nav-section">{item.section}</div>
+        ) : (
+          <button
+            type="button"
+            key={item.id}
+            className={`navitem${effectivePage === item.id ? " active" : ""}`}
+            disabled={item.disabled || (appLocked && item.id !== "booths")}
+            title={item.disabled ? "Booth Builder is coming later" : appLocked && item.id !== "booths" ? "Backup-only mode is active" : ""}
+            onClick={() => !item.disabled && setPage(item.id)}
+          >
+            <item.Icon className="ico" size={17} strokeWidth={1.8} />
+            <span>{item.label}</span>
+            {item.badge && <span className="nav-badge">{item.badge}</span>}
+          </button>
+        ))}
+        <div className="nav-spacer" />
+        <div className="sidebar-status">
+          <span className="service-dot online" />
+          <span>{cfg.alleyCommunityName || (isStaff ? "Alley staff" : "Alley connected")}</span>
+        </div>
+        <button type="button" className={`navitem${effectivePage === "settings" ? " active" : ""}`} onClick={() => setPage("settings")}>
+          <Settings className="ico" size={17} strokeWidth={1.8} /><span>Settings</span>
+        </button>
+      </aside>
+
+      <main className="main">
+        {update && !updateDismissed && ["available", "downloading", "downloaded"].includes(update.status) && (
+          <UpdateBanner update={update} onDismiss={() => setUpdateDismissed(true)} />
+        )}
+        {appLocked && <LockBanner event={event} />}
+        {newUploads.length > 0 && (
+          <div className="new-upload-banner">
+            <UploadCloud size={18} />
+            <div>
+              <strong>{newUploads.length === 1 ? "A new booth backup is ready" : `${newUploads.length} new booth backups are ready`}</strong>
+              <span>Your latest server upload is available to inspect and download.</span>
+            </div>
+            <button className="primary small right" onClick={() => { setPage("booths"); acknowledgeUploads(); }}>View backups</button>
+            <button className="ghost small" onClick={acknowledgeUploads}>Dismiss</button>
+          </div>
+        )}
+        <header className="topbar">
+          <div className="topbar-heading">
+            <span>Legends Alley</span>
+            <strong>{appLocked && effectivePage === "booths" ? "Backup Mode" : TITLES[effectivePage]}</strong>
+          </div>
+          <div className="spacer" />
+          <div className="community-chip">
+            <Building2 size={15} />
+            <span>
+              <strong>{cfg.alleyCommunityName || "Alley Staff"}</strong>
+              <small>{cfg.alleyGroupId || (isStaff ? "All communities" : "Group ID pending")}</small>
+            </span>
+            <span className="rolebadge">{String(cfg.alleyRole || (isStaff ? "staff" : "team")).toUpperCase()}</span>
+          </div>
+          <div className="userchip">
+            {cfg.alleyAvatarUrl
+              ? <img src={cfg.alleyAvatarUrl} alt="" />
+              : <div className="avatar compact-avatar">{(cfg.alleyUsername || "?")[0]?.toUpperCase()}</div>}
+            <span className="name">{cfg.alleyUsername || "Signed in"}</span>
+          </div>
+        </header>
+        <div className="content" key={effectivePage}>
+          <PageComponent
+            cfg={cfg}
+            refreshConfig={refreshConfig}
+            isAdmin={isStaff}
+            goTo={setPage}
+            onLogout={logout}
+            event={event}
+            appLocked={appLocked}
+            newUploadIds={new Set(newUploads.map((booth) => String(booth.id)))}
+            onAcknowledgeUploads={acknowledgeUploads}
+          />
+        </div>
+      </main>
+    </div>
+  );
+}
+
+function LockBanner({ event }) {
+  return (
+    <div className="lock-banner">
+      <LockKeyhole size={17} />
+      <div>
+        <strong>Backup-only mode is active</strong>
+        <span>{event?.name || "The event"} begins within five days. Editing and collaboration tools are locked to protect the final event build; retained booth ZIP downloads remain available.</span>
+      </div>
+    </div>
+  );
+}
+
+function UpdateBanner({ update, onDismiss }) {
+  return (
+    <div className="update-banner">
+      {update.status === "available" && <><strong>Update {update.latestVersion || ""} is available</strong><span className="muted">A new Booth Manager release is ready.</span><span className="right" /><button className="primary small" onClick={() => api.downloadUpdate()}>Download</button><button className="ghost small" onClick={onDismiss}>Later</button></>}
+      {update.status === "downloading" && <><strong>Downloading update</strong><div className="bar"><div style={{ width: `${update.progress || 0}%` }} /></div><span className="muted">{update.progress || 0}%</span></>}
+      {update.status === "downloaded" && <><strong>Update ready</strong><span className="muted">Restart to finish installing.</span><span className="right" /><button className="primary small" onClick={() => api.installUpdate()}>Restart now</button><button className="ghost small" onClick={onDismiss}>Later</button></>}
+    </div>
+  );
+}

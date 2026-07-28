@@ -1,24 +1,12 @@
-# .NET / WinUI
-bin/
-obj/
-*.user
-*.suo
-.vs/
-*.binlog
-*build*.txt
-
-# WinUI / MSIX
-AppPackages/
-BundleArtifacts/
-*.pfx
-*.appx
-*.msix
-
-# NuGet
-*.nupkg
-packages/
+# Node / Electron
+node_modules/
+dist/
+release/
+*.local
 
 # Logs / temp
 *.log
 *.tmp
-TestResults/
+npm-debug.log*
+Thumbs.db
+.DS_Store

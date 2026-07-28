@@ -1,0 +1,72 @@
+{
+  "name": "booth-manager",
+  "version": "2.0.0",
+  "description": "Legends Alley community chat, booth backup, and event companion",
+  "author": "VRChat Legends",
+  "productName": "Booth Manager",
+  "main": "electron/main.js",
+  "scripts": {
+    "dev": "concurrently \"vite\" \"wait-on tcp:5175 && electron .\"",
+    "build:icon": "node scripts/build-icon.js",
+    "build:web": "vite build",
+    "start": "electron .",
+    "dist": "npm run build:icon && npm run build:web && electron-builder --win nsis"
+  },
+  "dependencies": {
+    "@comfyorg/fbx-exporter-three": "^1.0.1",
+    "electron-updater": "^6.8.3",
+    "lucide-react": "^0.468.0",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "three": "^0.180.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^5.1.0",
+    "concurrently": "^9.2.1",
+    "electron": "^37.2.4",
+    "electron-builder": "^26.0.12",
+    "sharp": "^0.34.5",
+    "to-ico": "^1.1.5",
+    "vite": "^7.1.7",
+    "wait-on": "^9.0.1"
+  },
+  "build": {
+    "appId": "com.vrchatlegends.boothmanager",
+    "productName": "Booth Manager",
+    "asar": true,
+    "compression": "maximum",
+    "files": [
+      "electron/**/*",
+      "dist/**/*",
+      "package.json",
+      "assets/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "assets/app-icon.ico",
+        "to": "app-icon.ico"
+      }
+    ],
+    "directories": {
+      "output": "release"
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "VRChat-Legends",
+        "repo": "Booth-Manager"
+      }
+    ],
+    "win": {
+      "target": ["nsis"],
+      "icon": "assets/app-icon.ico",
+      "verifyUpdateCodeSignature": false,
+      "artifactName": "Booth-Manager-Setup-${version}.${ext}"
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "deleteAppDataOnUninstall": false
+    }
+  }
+}

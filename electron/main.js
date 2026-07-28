@@ -1,0 +1,470 @@
+"use strict";
+
+const path = require("path");
+const fs = require("fs");
+const { pathToFileURL } = require("url");
+const { Readable } = require("stream");
+const { pipeline } = require("stream/promises");
+const { app, BrowserWindow, Menu, dialog, ipcMain, shell, protocol, net } = require("electron");
+const { readConfig, writeConfig } = require("./configStore");
+const shareStore = require("./shareStore");
+const auth = require("./auth");
+const updater = require("./updater");
+
+protocol.registerSchemesAsPrivileged([{
+  scheme: "booth-local",
+  privileges: { standard: true, secure: true, stream: true, supportFetchAPI: true, corsEnabled: true }
+}]);
+
+const hasSingleInstanceLock = app.requestSingleInstanceLock();
+if (!hasSingleInstanceLock) {
+  app.quit();
+}
+
+const APP_DISPLAY_NAME = "Booth Manager";
+app.setName(APP_DISPLAY_NAME);
+if (process.platform === "win32") {
+  app.setAppUserModelId("com.vrchatlegends.boothmanager");
+}
+
+let mainWindow = null;
+const incomingTransfers = new Map();
+const receivedFiles = new Map();
+const SESSION_ID_PATTERN = /^[A-Za-z0-9_-]{8,80}$/;
+const RECEIVED_ROOT = () => path.join(app.getPath("temp"), "vrchat-legends-booth-manager", String(process.pid));
+
+function alleyBase() {
+  return String(readConfig().alleyApiBase || "https://alley.vrchatlegends.com").replace(/\/$/, "");
+}
+
+// ------------------------------------------------------------------
+// HTTP proxy helpers (renderer never talks to the network directly,
+// so tokens stay in the main process and CORS never applies)
+// ------------------------------------------------------------------
+
+async function proxyFetch(base, token, pathName, options = {}) {
+  const url = base + pathName;
+  const headers = { ...(options.headers || {}) };
+  if (token) headers.Authorization = `Bearer ${token}`;
+
+  let body;
+  if (options.json !== undefined) {
+    headers["Content-Type"] = "application/json";
+    body = JSON.stringify(options.json);
+  } else if (options.bufferBase64) {
+    headers["Content-Type"] = options.contentType || "application/octet-stream";
+    body = Buffer.from(options.bufferBase64, "base64");
+  }
+
+  try {
+    const res = await fetch(url, { method: options.method || "GET", headers, body });
+    const status = res.status;
+    const contentType = res.headers.get("content-type") || "";
+
+    if (options.binary) {
+      if (!res.ok) return { status, error: `HTTP ${status}` };
+      const buf = Buffer.from(await res.arrayBuffer());
+      return { status, dataBase64: buf.toString("base64"), contentType };
+    }
+
+    const text = await res.text();
+    let data = null;
+    try { data = text ? JSON.parse(text) : null; } catch { data = null; }
+    const error = !res.ok
+      ? (data && (data.error || data.message)) || `HTTP ${status}`
+      : "";
+    return { status, data, error };
+  } catch (ex) {
+    return { status: 0, data: null, error: String(ex && ex.message ? ex.message : ex) };
+  }
+}
+
+// ------------------------------------------------------------------
+// IPC: config
+// ------------------------------------------------------------------
+
+ipcMain.handle("config:get", () => readConfig());
+ipcMain.handle("config:save", (_e, patch) => writeConfig(patch));
+ipcMain.handle("app:version", () => app.getVersion());
+ipcMain.handle("app:openExternal", async (_e, url) => {
+  const s = String(url || "");
+  if (/^https?:\/\//i.test(s)) await shell.openExternal(s);
+});
+
+// ------------------------------------------------------------------
+// IPC: alley service API (SDK JWT)
+// ------------------------------------------------------------------
+
+ipcMain.handle("alley:login", async () => {
+  const result = await auth.loginAlley(alleyBase());
+  if (result.ok) {
+    writeConfig({
+      alleyToken: result.token,
+      alleyStaff: result.staff,
+      alleyRole: result.role,
+      alleyCommunityName: result.community ? String(result.community.name || "") : "",
+      alleyCommunityId: result.community ? String(result.community.id || "") : "",
+      alleyGroupId: result.community ? String(result.community.groupId || "") : "",
+      alleyDiscordId: result.user ? String(result.user.discordUserId || "") : "",
+      alleyUsername: result.user ? String(result.user.username || "") : "",
+      alleyAvatarUrl: result.user ? String(result.user.avatarUrl || "") : ""
+    });
+  }
+  return result;
+});
+
+ipcMain.handle("alley:logout", async () => {
+  writeConfig({
+    alleyToken: "",
+    alleyStaff: false,
+    alleyRole: "",
+    alleyCommunityName: "",
+    alleyCommunityId: "",
+    alleyGroupId: "",
+    alleyDiscordId: "",
+    alleyUsername: "",
+    alleyAvatarUrl: ""
+  });
+  return { ok: true };
+});
+
+ipcMain.handle("alley:request", async (_e, pathName, options) => {
+  const cfg = readConfig();
+  const res = await proxyFetch(alleyBase(), cfg.alleyToken, pathName, options || {});
+  if (pathName === "/api/auth/me" && res.status === 200 && res.data) {
+    const community = res.data.community || null;
+    const user = res.data.user || null;
+    writeConfig({
+      alleyStaff: res.data.staff === true,
+      alleyRole: String(res.data.role || ""),
+      alleyCommunityName: community ? String(community.name || "") : "",
+      alleyCommunityId: community ? String(community.id || "") : "",
+      alleyGroupId: community ? String(community.groupId || "") : "",
+      alleyDiscordId: user ? String(user.discordUserId || "") : cfg.alleyDiscordId,
+      alleyUsername: user ? String(user.username || "") : cfg.alleyUsername,
+      alleyAvatarUrl: user ? String(user.avatarUrl || "") : cfg.alleyAvatarUrl
+    });
+  }
+  if ((res.status === 401 || res.status === 403) && pathName === "/api/auth/me") {
+    writeConfig({
+      alleyToken: "",
+      alleyStaff: false,
+      alleyRole: "",
+      alleyCommunityName: "",
+      alleyCommunityId: "",
+      alleyGroupId: "",
+      alleyDiscordId: "",
+      alleyUsername: "",
+      alleyAvatarUrl: ""
+    });
+  }
+  return res;
+});
+
+ipcMain.handle("alley:download", async (_e, pathName, defaultName) => {
+  const requestPath = String(pathName || "");
+  if (!/^\/api\/booths\/[A-Za-z0-9_-]+\/download$/.test(requestPath)) {
+    return { ok: false, error: "That is not a booth backup download." };
+  }
+  const picked = await dialog.showSaveDialog(mainWindow, {
+    defaultPath: String(defaultName || "booth-backup.zip"),
+    filters: [{ name: "Booth backup", extensions: ["zip"] }]
+  });
+  if (picked.canceled || !picked.filePath) return { ok: false, canceled: true };
+
+  const cfg = readConfig();
+  try {
+    const response = await fetch(alleyBase() + requestPath, {
+      headers: { Authorization: `Bearer ${cfg.alleyToken}` }
+    });
+    if (!response.ok || !response.body) {
+      const body = await response.json().catch(() => ({}));
+      return { ok: false, error: body.error || `Download failed (${response.status}).` };
+    }
+    await pipeline(Readable.fromWeb(response.body), fs.createWriteStream(picked.filePath));
+    shell.showItemInFolder(picked.filePath);
+    return { ok: true, path: picked.filePath };
+  } catch (error) {
+    try { fs.unlinkSync(picked.filePath); } catch { /* ignore */ }
+    return { ok: false, error: String(error.message || error) };
+  }
+});
+
+// fetch an auth-protected alley image (booth previews, community logos)
+ipcMain.handle("alley:image", async (_e, pathOrUrl) => {
+  const cfg = readConfig();
+  const p = String(pathOrUrl || "");
+  const full = /^https?:\/\//i.test(p) ? p : alleyBase() + p;
+  if (/^https?:\/\//i.test(p) && !p.startsWith(alleyBase())) {
+    // absolute non-alley URL: fetch without token
+    return await proxyFetch("", "", full, { binary: true });
+  }
+  return await proxyFetch(alleyBase(), cfg.alleyToken, full.replace(alleyBase(), ""), { binary: true });
+});
+
+// ------------------------------------------------------------------
+// IPC: file dialogs + disk io for standee outputs
+// ------------------------------------------------------------------
+
+ipcMain.handle("dialog:openImage", async (_e, opts) => {
+  const res = await dialog.showOpenDialog(mainWindow, {
+    properties: opts && opts.multi ? ["openFile", "multiSelections"] : ["openFile"],
+    filters: [{ name: "Images", extensions: ["png", "jpg", "jpeg", "webp"] }]
+  });
+  if (res.canceled || res.filePaths.length === 0) return { ok: false };
+  const files = res.filePaths.map((p) => ({
+    path: p,
+    name: path.basename(p),
+    dataBase64: fs.readFileSync(p).toString("base64")
+  }));
+  return { ok: true, files };
+});
+
+ipcMain.handle("dialog:openSharedFiles", async () => {
+  const res = await dialog.showOpenDialog(mainWindow, {
+    properties: ["openFile", "multiSelections"],
+    filters: [
+      { name: "Images, videos, and files", extensions: ["png", "jpg", "jpeg", "gif", "webp", "avif", "bmp", "mp4", "webm", "mov", "mkv", "pdf", "zip", "txt", "json", "unitypackage", "fbx", "obj", "glb", "gltf"] },
+      { name: "All files", extensions: ["*"] }
+    ]
+  });
+  if (res.canceled || !res.filePaths.length) return { ok: false, files: [], rejected: [] };
+  const result = shareStore.addPaths(res.filePaths.slice(0, 5));
+  return { ok: result.files.length > 0, ...result };
+});
+
+ipcMain.handle("shares:list", () => shareStore.list());
+ipcMain.handle("shares:status", (_e, id) => shareStore.status(id));
+ipcMain.handle("shares:readChunk", (_e, id, offset, length) => shareStore.readChunk(id, offset, length));
+
+ipcMain.handle("incoming:begin", (_e, sessionId, metadata) => {
+  const id = String(sessionId || "");
+  if (!SESSION_ID_PATTERN.test(id)) return { ok: false, error: "Invalid transfer ID." };
+  const size = Math.floor(Number(metadata?.size));
+  if (!Number.isFinite(size) || size < 0 || size > shareStore.MAX_FILE_BYTES) {
+    return { ok: false, error: "Invalid incoming file size." };
+  }
+  try {
+    fs.mkdirSync(RECEIVED_ROOT(), { recursive: true });
+    const partPath = path.join(RECEIVED_ROOT(), `${id}.part`);
+    const existing = incomingTransfers.get(id);
+    if (existing) fs.closeSync(existing.fd);
+    const fd = fs.openSync(partPath, "w");
+    incomingTransfers.set(id, {
+      fd,
+      path: partPath,
+      received: 0,
+      size,
+      name: path.basename(String(metadata?.name || "attachment")).slice(0, 160),
+      mime: String(metadata?.mime || "application/octet-stream").slice(0, 120)
+    });
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, error: String(error.message || error) };
+  }
+});
+
+ipcMain.handle("incoming:append", (_e, sessionId, data) => {
+  const transfer = incomingTransfers.get(String(sessionId || ""));
+  if (!transfer) return { ok: false, error: "Transfer is not open." };
+  try {
+    const bytes = data instanceof ArrayBuffer ? Buffer.from(new Uint8Array(data)) : Buffer.from(data);
+    if (bytes.length > shareStore.MAX_READ_BYTES || transfer.received + bytes.length > transfer.size) {
+      throw new Error("Invalid incoming chunk.");
+    }
+    fs.writeSync(transfer.fd, bytes, 0, bytes.length, transfer.received);
+    transfer.received += bytes.length;
+    return { ok: true, received: transfer.received };
+  } catch (error) {
+    return { ok: false, error: String(error.message || error) };
+  }
+});
+
+ipcMain.handle("incoming:finish", (_e, sessionId) => {
+  const id = String(sessionId || "");
+  const transfer = incomingTransfers.get(id);
+  if (!transfer) return { ok: false, error: "Transfer is not open." };
+  try {
+    fs.closeSync(transfer.fd);
+    incomingTransfers.delete(id);
+    if (transfer.received !== transfer.size) throw new Error("The transfer ended before the complete file arrived.");
+    const extension = path.extname(transfer.name).match(/^\.[A-Za-z0-9]{1,10}$/)?.[0] || ".bin";
+    const finalPath = path.join(RECEIVED_ROOT(), `${id}${extension}`);
+    fs.renameSync(transfer.path, finalPath);
+    const received = { ...transfer, path: finalPath, id };
+    delete received.fd;
+    receivedFiles.set(id, received);
+    return { ok: true, localUrl: `booth-local://received/${id}`, name: transfer.name, size: transfer.size, mime: transfer.mime };
+  } catch (error) {
+    try { fs.unlinkSync(transfer.path); } catch { /* ignore */ }
+    return { ok: false, error: String(error.message || error) };
+  }
+});
+
+ipcMain.handle("incoming:cancel", (_e, sessionId) => {
+  const id = String(sessionId || "");
+  const transfer = incomingTransfers.get(id);
+  if (transfer) {
+    try { fs.closeSync(transfer.fd); } catch { /* ignore */ }
+    try { fs.unlinkSync(transfer.path); } catch { /* ignore */ }
+    incomingTransfers.delete(id);
+  }
+  return { ok: true };
+});
+
+ipcMain.handle("incoming:save", async (_e, sessionId) => {
+  const received = receivedFiles.get(String(sessionId || ""));
+  if (!received || !fs.existsSync(received.path)) return { ok: false, error: "Download the peer file again first." };
+  const picked = await dialog.showSaveDialog(mainWindow, { defaultPath: received.name });
+  if (picked.canceled || !picked.filePath) return { ok: false };
+  try {
+    fs.copyFileSync(received.path, picked.filePath);
+    shell.showItemInFolder(picked.filePath);
+    return { ok: true, path: picked.filePath };
+  } catch (error) {
+    return { ok: false, error: String(error.message || error) };
+  }
+});
+
+ipcMain.handle("dialog:saveFile", async (_e, opts) => {
+  const res = await dialog.showSaveDialog(mainWindow, {
+    defaultPath: opts && opts.defaultName ? opts.defaultName : "output",
+    filters: opts && Array.isArray(opts.filters) && opts.filters.length
+      ? opts.filters
+      : [{ name: "All files", extensions: ["*"] }]
+  });
+  if (res.canceled || !res.filePath) return { ok: false };
+  return { ok: true, path: res.filePath };
+});
+
+ipcMain.handle("dialog:pickFolder", async () => {
+  const res = await dialog.showOpenDialog(mainWindow, { properties: ["openDirectory", "createDirectory"] });
+  if (res.canceled || res.filePaths.length === 0) return { ok: false };
+  return { ok: true, path: res.filePaths[0] };
+});
+
+ipcMain.handle("fs:writeFile", async (_e, filePath, dataBase64) => {
+  try {
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    fs.writeFileSync(filePath, Buffer.from(String(dataBase64 || ""), "base64"));
+    return { ok: true };
+  } catch (ex) {
+    return { ok: false, error: String(ex && ex.message ? ex.message : ex) };
+  }
+});
+
+ipcMain.handle("fs:writeText", async (_e, filePath, text) => {
+  try {
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    fs.writeFileSync(filePath, String(text ?? ""), "utf8");
+    return { ok: true };
+  } catch (ex) {
+    return { ok: false, error: String(ex && ex.message ? ex.message : ex) };
+  }
+});
+
+ipcMain.handle("fs:showInFolder", async (_e, filePath) => {
+  try { shell.showItemInFolder(String(filePath || "")); } catch { /* ignore */ }
+});
+
+// ------------------------------------------------------------------
+// IPC: updates
+// ------------------------------------------------------------------
+
+ipcMain.handle("updates:getState", () => updater.getState());
+ipcMain.handle("updates:check", async () => await updater.check());
+ipcMain.handle("updates:download", async () => await updater.download());
+ipcMain.handle("updates:install", () => updater.install());
+
+// ------------------------------------------------------------------
+// window
+// ------------------------------------------------------------------
+
+function createWindow() {
+  mainWindow = new BrowserWindow({
+    width: 1440,
+    height: 900,
+    minWidth: 1120,
+    minHeight: 700,
+    backgroundColor: "#080b10",
+    show: false,
+    autoHideMenuBar: true,
+    icon: path.join(__dirname, "..", "assets", "app-icon.ico"),
+    webPreferences: {
+      preload: path.join(__dirname, "preload.js"),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: false
+    }
+  });
+  Menu.setApplicationMenu(null);
+
+  mainWindow.once("ready-to-show", () => mainWindow.show());
+  // Safety net: if the renderer stalls (e.g. vite optimizing deps on first run),
+  // show the window anyway so the app never appears to silently not launch.
+  setTimeout(() => {
+    if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.isVisible()) mainWindow.show();
+  }, 5000);
+
+  if (process.env.VITE_DEV_SERVER === "1" || !app.isPackaged) {
+    // Retry: Electron's network service can crash-restart on cold start, and vite
+    // may still be optimizing deps; a single failed load left a hidden blank window.
+    const devUrl = "http://127.0.0.1:5175";
+    let attempts = 0;
+    const tryLoad = () => {
+      attempts += 1;
+      mainWindow.loadURL(devUrl).catch(() => {
+        if (attempts < 15) setTimeout(tryLoad, 1200);
+        else mainWindow.loadFile(path.join(__dirname, "..", "dist", "index.html"));
+      });
+    };
+    tryLoad();
+  } else {
+    mainWindow.loadFile(path.join(__dirname, "..", "dist", "index.html"));
+  }
+
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    if (/^https?:\/\//i.test(url)) shell.openExternal(url);
+    return { action: "deny" };
+  });
+}
+
+app.on("second-instance", () => {
+  if (mainWindow) {
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.focus();
+  }
+});
+
+app.whenReady().then(() => {
+  protocol.handle("booth-local", (request) => {
+    const url = new URL(request.url);
+    const id = url.pathname.replace(/^\//, "");
+    let filePath = "";
+    if (url.hostname === "shared") {
+      const record = shareStore.get(id);
+      if (record && shareStore.status(id).available) filePath = record.path;
+    } else if (url.hostname === "received") {
+      const received = receivedFiles.get(id);
+      if (received && fs.existsSync(received.path)) filePath = received.path;
+    }
+    if (!filePath) return new Response("Local file unavailable", { status: 404 });
+    return net.fetch(pathToFileURL(filePath).href, { headers: request.headers });
+  });
+  fs.rmSync(RECEIVED_ROOT(), { recursive: true, force: true });
+  createWindow();
+  updater.start((state) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send("updates:state", state);
+    }
+  });
+});
+
+app.on("window-all-closed", () => {
+  for (const transfer of incomingTransfers.values()) {
+    try { fs.closeSync(transfer.fd); } catch { /* ignore */ }
+  }
+  fs.rmSync(RECEIVED_ROOT(), { recursive: true, force: true });
+  updater.stop();
+  app.quit();
+});

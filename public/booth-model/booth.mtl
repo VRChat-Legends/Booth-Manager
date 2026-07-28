@@ -1,0 +1,29 @@
+newmtl main_building
+Kd 1 1 1
+Ke 0.55 0.55 0.55
+map_Kd building_color.png
+map_Ke building_emit.png
+
+newmtl screen
+Kd 0.01 0.01 0.012
+Ke 1 1 1
+map_Ke screen_placeholder.png
+
+newmtl glass
+Kd 0.6239604 0.8148466 1
+d 0.12
+
+newmtl desk
+Kd 1 1 1
+map_Kd desk_color.png
+
+newmtl chair
+Kd 1 1 1
+map_Kd chair_color.png
+
+newmtl back_poster_1_large
+Kd 1 1 1
+Ke 0.3 0.3 0.3
+map_Kd banner_1920.png
+map_Ke banner_1920.png
+

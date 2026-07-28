@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="760" viewBox="0 0 760 760" role="img" aria-labelledby="title desc">
+  <title id="title">Legends Alley LA mark</title>
+  <desc id="desc">A white L and star with a pink A inside a broken pink and white ring.</desc>
+  <defs>
+    <linearGradient id="pink" x1="0" y1="0" x2="0.8" y2="1">
+      <stop offset="0" stop-color="#f8b3ee"/>
+      <stop offset="1" stop-color="#ee9be2"/>
+    </linearGradient>
+  </defs>
+
+  <path d="M67 360A316 316 0 0 1 699 360" fill="none" stroke="url(#pink)" stroke-width="33" stroke-linecap="round"/>
+  <path d="M67 419A316 316 0 0 0 699 419" fill="none" stroke="#ffffff" stroke-width="33" stroke-linecap="round"/>
+
+  <path d="M258 182H337Q347 182 343 194L253 449H356L318 525Q315 531 307 531H134Q121 531 126 517L251 192Q254 182 258 182Z" fill="#ffffff"/>
+
+  <path d="M485 214 677 585Q681 595 672 601L619 625Q610 630 605 619L485 377 402 526Q399 531 391 531H324L476 219Q480 210 485 214Z" fill="url(#pink)"/>
+
+  <path d="m484 435 10 30h33l-26 19 10 32-27-19-27 19 10-32-26-19h33Z" fill="#ffffff"/>
+</svg>

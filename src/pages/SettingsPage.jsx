@@ -1,0 +1,121 @@
+import { useEffect, useState } from "react";
+import * as api from "../lib/api.js";
+import * as audio from "../lib/audio.js";
+
+export default function SettingsPage({ cfg, refreshConfig, onLogout }) {
+  const [version, setVersion] = useState("");
+  const [update, setUpdate] = useState(null);
+  const [alleyBase, setAlleyBase] = useState(cfg.alleyApiBase || "");
+  const [msg, setMsg] = useState("");
+
+  useEffect(() => {
+    api.getAppVersion().then(setVersion);
+    api.getUpdateState().then(setUpdate);
+    const off = api.onUpdateState(setUpdate);
+    return () => off?.();
+  }, []);
+
+  const toggle = async (key, value) => {
+    await api.saveConfig({ [key]: value });
+    await refreshConfig();
+    if (key === "musicEnabled") audio.setMusicEnabled(value);
+    if (key === "sfxEnabled") audio.setSfxEnabled(value);
+  };
+
+  const saveBases = async () => {
+    const okAlley = /^https?:\/\//i.test(alleyBase.trim());
+    if (!okAlley) { setMsg("The service address must be an http(s) URL."); return; }
+    await api.saveConfig({ alleyApiBase: alleyBase.trim().replace(/\/$/, "") });
+    await refreshConfig();
+    setMsg("Saved. New requests use this service address.");
+  };
+
+  const check = async () => {
+    setUpdate(await api.checkForUpdates());
+  };
+
+  return (
+    <div className="page stagger" style={{ maxWidth: 640, display: "flex", flexDirection: "column", gap: 14 }}>
+      <div className="card">
+        <h3>Sound</h3>
+        <ToggleRow
+          label="Background music"
+          desc="Synthesized ambient loop, generated live in the app"
+          value={cfg.musicEnabled !== false}
+          onChange={(v) => toggle("musicEnabled", v)}
+        />
+        <ToggleRow
+          label="UI sounds"
+          desc="Clicks and success chimes"
+          value={cfg.sfxEnabled !== false}
+          onChange={(v) => toggle("sfxEnabled", v)}
+        />
+      </div>
+
+      <div className="card">
+        <h3>Updates</h3>
+        <div className="row">
+          <div className="grow">
+            <div className="small" style={{ fontWeight: 600 }}>Booth Manager v{version}</div>
+            <div className="muted tiny mt8">
+              {update?.status === "available" && `Update ${update.latestVersion} is available.`}
+              {update?.status === "downloading" && `Downloading... ${update.progress}%`}
+              {update?.status === "downloaded" && "Update downloaded, restart to install."}
+              {update?.status === "uptodate" && "You are up to date."}
+              {update?.status === "checking" && "Checking..."}
+              {update?.status === "error" && `Update check failed: ${update.error}`}
+              {(!update || update.status === "idle") && "Checks automatically on launch and every 30 minutes."}
+            </div>
+          </div>
+          {update?.status === "available" && <button className="primary" onClick={() => api.downloadUpdate()}>Download</button>}
+          {update?.status === "downloaded" && <button className="primary" onClick={() => api.installUpdate()}>Restart now</button>}
+          <button onClick={check}>Check now</button>
+        </div>
+      </div>
+
+      <div className="card">
+        <h3>Service</h3>
+        <label className="field"><span>Legends Alley service address</span>
+          <input type="url" value={alleyBase} onChange={(e) => setAlleyBase(e.target.value)} />
+        </label>
+        <div className="row">
+          <button onClick={saveBases}>Save</button>
+          {msg && <span className="muted small">{msg}</span>}
+        </div>
+      </div>
+
+      <div className="card">
+        <h3>Account</h3>
+        <div className="row account-row">
+          <div className="grow">
+            <div className="small" style={{ fontWeight: 600 }}>{cfg.alleyUsername || "Signed in with Discord"}</div>
+            <div className="muted tiny mt8 account-details">
+              <span>{cfg.alleyCommunityName || (cfg.alleyStaff ? "Alley staff account" : "No community linked")}</span>
+              <span>{cfg.alleyGroupId || (cfg.alleyStaff ? "All communities" : "VRChat group ID pending")}</span>
+              <span className="rolebadge">{String(cfg.alleyRole || (cfg.alleyStaff ? "staff" : "team")).toUpperCase()}</span>
+            </div>
+          </div>
+          <button className="danger" onClick={onLogout}>Sign out</button>
+        </div>
+      </div>
+
+      <div className="muted tiny" style={{ padding: "0 4px" }}>
+        Proprietary software of VRChat Legends. All rights reserved.
+        Standee concept credit: Sketch494's Auto-Standee (original implementation, no GPL code).
+      </div>
+    </div>
+  );
+}
+
+function ToggleRow({ label, desc, value, onChange }) {
+  return (
+    <label className="switch-row settings-toggle">
+      <div className="grow">
+        <div className="small" style={{ fontWeight: 600 }}>{label}</div>
+        <div className="muted tiny">{desc}</div>
+      </div>
+      <input type="checkbox" checked={value} onChange={(event) => onChange(event.target.checked)} />
+      <span className="switch-track"><span /></span>
+    </label>
+  );
+}
