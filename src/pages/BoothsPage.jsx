@@ -1,7 +1,34 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Archive, Box, Download, HardDrive, RefreshCw, Search, ShieldCheck } from "lucide-react";
+import { Archive, Box, Check, ChevronDown, Copy, Download, HardDrive, RefreshCw, Search, ShieldCheck } from "lucide-react";
 import * as api from "../lib/api.js";
 import * as audio from "../lib/audio.js";
+
+const STAT_LABELS = {
+  triangles: "Triangles",
+  buildSizeMB: "Build size (MB)",
+  vramMB: "Texture + mesh memory (MB)",
+  materialSlots: "Material slots",
+  uniqueTextures: "Unique textures",
+  maxTextureResolution: "Largest texture",
+  staticMeshes: "Static meshes",
+  skinnedMeshes: "Skinned meshes",
+  particleSystems: "Particle systems",
+  totalParticles: "Total particles",
+  animators: "Animators",
+  animationClips: "Animation clips",
+  udonScripts: "Udon scripts",
+  pickups: "Pickups",
+  avatarPedestals: "Avatar pedestals",
+  portals: "Portals",
+  textComponents: "Text components",
+  audioSources: "Audio sources",
+  videoPlayers: "Video players",
+  groupButtons: "Group buttons",
+  estimatedDrawCalls: "Est. draw calls",
+  estimatedSetPasses: "Est. set passes",
+  nonBoxColliders: "Non-box colliders",
+  audioRangeMeters: "Audio range (m)"
+};
 
 export default function BoothsPage({ cfg, appLocked, event, newUploadIds, onAcknowledgeUploads }) {
   const [booths, setBooths] = useState(null);
@@ -9,6 +36,7 @@ export default function BoothsPage({ cfg, appLocked, event, newUploadIds, onAckn
   const [query, setQuery] = useState("");
   const [downloading, setDownloading] = useState("");
   const [refreshing, setRefreshing] = useState(false);
+  const [expandedId, setExpandedId] = useState("");
 
   const load = useCallback(async (quiet = false) => {
     if (!cfg.alleyCommunityId) {
@@ -111,11 +139,16 @@ export default function BoothsPage({ cfg, appLocked, event, newUploadIds, onAckn
               <div className="upload-footer">
                 <span><HardDrive size={13} />{api.formatBytes(booth.fileSize)}</span>
                 <span>{booth.shaders?.length || 0} shaders</span>
+                {booth.limitsBypassed && <span className="pill amber" title="A staff member accepted this upload past normal limits">LIMITS BYPASSED</span>}
                 {newUploadIds?.has(String(booth.id)) && <span className="pill new-pill">NEW</span>}
-                <button className="primary right" onClick={() => download(booth)} disabled={downloading === booth.id}>
+                <button className="ghost right" onClick={() => setExpandedId((current) => current === booth.id ? "" : booth.id)}>
+                  <ChevronDown size={15} className={expandedId === booth.id ? "flip" : ""} />{expandedId === booth.id ? "Hide details" : "Details"}
+                </button>
+                <button className="primary" onClick={() => download(booth)} disabled={downloading === booth.id}>
                   <Download size={15} />{downloading === booth.id ? "Downloading" : "Download ZIP"}
                 </button>
               </div>
+              {expandedId === booth.id && <BoothDetails booth={booth} />}
             </div>
           </article>
         ))}
@@ -148,6 +181,70 @@ function BoothPreview({ booth }) {
       {failed && <div className="preview-missing"><Box size={25} /><span>Preview unavailable</span></div>}
     </div>
   );
+}
+
+function BoothDetails({ booth }) {
+  const stats = booth.stats || {};
+  const bounds = stats.boundsMeters;
+  const rows = Object.keys(STAT_LABELS)
+    .filter((key) => stats[key] != null && Number.isFinite(Number(stats[key])))
+    .map((key) => ({ key, label: STAT_LABELS[key], value: Number(stats[key]).toLocaleString() }));
+
+  return (
+    <div className="upload-details">
+      <div className="upload-details-facts">
+        <Fact label="Uploaded by" value={booth.uploadedByName || booth.uploadedBy || "Unknown"} />
+        <Fact label="Uploaded" value={api.formatDate(booth.uploadedAt)} />
+        <Fact label="Event" value={booth.eventId || "-"} />
+        <Fact label="Version" value={`v${booth.version}`} />
+        <Fact label="Status" value={booth.status} />
+        <Fact label="SDK" value={booth.sdkVersion || "-"} />
+        <Fact label="Archive" value={`${booth.fileName || "booth.zip"} (${api.formatBytes(booth.fileSize)})`} />
+        {bounds && Number.isFinite(Number(bounds.x)) && (
+          <Fact label="Bounds" value={`${round2(bounds.x)} x ${round2(bounds.y)} x ${round2(bounds.z)} m`} />
+        )}
+      </div>
+      {booth.sha256 && <Sha256Row hash={booth.sha256} />}
+      {rows.length > 0 && (
+        <div className="upload-details-stats">
+          {rows.map((row) => <div key={row.key}><span>{row.label}</span><strong>{row.value}</strong></div>)}
+        </div>
+      )}
+      {(booth.shaders || []).length > 0 && (
+        <div className="upload-details-shaders">
+          <span>Shaders</span>
+          <div>{booth.shaders.map((shader) => <code key={shader}>{shader}</code>)}</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Sha256Row({ hash }) {
+  const [copied, setCopied] = useState(false);
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(hash);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1600);
+    } catch { /* clipboard unavailable */ }
+  };
+  return (
+    <div className="upload-sha">
+      <span>SHA-256</span>
+      <code title={hash}>{hash}</code>
+      <button className="icon-button small" title="Copy hash" onClick={copy}>{copied ? <Check size={13} /> : <Copy size={13} />}</button>
+    </div>
+  );
+}
+
+function Fact({ label, value }) {
+  return <div className="fact"><span>{label}</span><strong>{value}</strong></div>;
+}
+
+function round2(value) {
+  const n = Number(value);
+  return Number.isFinite(n) ? Math.round(n * 100) / 100 : "?";
 }
 
 function Metric({ label, value }) {

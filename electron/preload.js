@@ -6,6 +6,7 @@ contextBridge.exposeInMainWorld("boothApi", {
   saveConfig: (patch) => ipcRenderer.invoke("config:save", patch),
   getAppVersion: () => ipcRenderer.invoke("app:version"),
   openExternal: (url) => ipcRenderer.invoke("app:openExternal", url),
+  uninstallApp: () => ipcRenderer.invoke("app:uninstall"),
 
   // alley service API
   alleyLogin: () => ipcRenderer.invoke("alley:login"),

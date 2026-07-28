@@ -1,6 +1,6 @@
 {
   "name": "booth-manager",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "Legends Alley community chat, booth backup, and event companion",
   "author": "VRChat Legends",
   "productName": "Booth Manager",
@@ -58,7 +58,9 @@
       }
     ],
     "win": {
-      "target": ["nsis"],
+      "target": [
+        "nsis"
+      ],
       "icon": "assets/app-icon.ico",
       "verifyUpdateCodeSignature": false,
       "artifactName": "Booth-Manager-Setup-${version}.${ext}"

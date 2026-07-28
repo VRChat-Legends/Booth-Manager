@@ -6,6 +6,7 @@ export const getConfig = () => api.getConfig();
 export const saveConfig = (patch) => api.saveConfig(patch);
 export const getAppVersion = () => api.getAppVersion();
 export const openExternal = (url) => api.openExternal(url);
+export const uninstallApp = () => api.uninstallApp();
 
 // alley service
 export const alleyLogin = () => api.alleyLogin();

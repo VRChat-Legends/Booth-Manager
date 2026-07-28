@@ -16,6 +16,7 @@ const DEFAULTS = {
   alleyCommunityName: "",
   alleyCommunityId: "",
   alleyGroupId: "",
+  alleyLogoUrl: "",
   alleyDiscordId: "",
   alleyUsername: "",
   alleyAvatarUrl: "",
@@ -23,7 +24,8 @@ const DEFAULTS = {
   seenBoothUploadsInitialized: false,
   // preferences
   musicEnabled: true,
-  sfxEnabled: true
+  sfxEnabled: true,
+  runInTray: true
 };
 
 let cache = null;

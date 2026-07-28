@@ -5,7 +5,8 @@ const fs = require("fs");
 const { pathToFileURL } = require("url");
 const { Readable } = require("stream");
 const { pipeline } = require("stream/promises");
-const { app, BrowserWindow, Menu, dialog, ipcMain, shell, protocol, net } = require("electron");
+const { spawn } = require("child_process");
+const { app, BrowserWindow, Menu, Tray, dialog, ipcMain, shell, protocol, net } = require("electron");
 const { readConfig, writeConfig } = require("./configStore");
 const shareStore = require("./shareStore");
 const auth = require("./auth");
@@ -32,6 +33,39 @@ const incomingTransfers = new Map();
 const receivedFiles = new Map();
 const SESSION_ID_PATTERN = /^[A-Za-z0-9_-]{8,80}$/;
 const RECEIVED_ROOT = () => path.join(app.getPath("temp"), "vrchat-legends-booth-manager", String(process.pid));
+
+// Older service builds did not return a user object, but the SDK JWT itself
+// carries identity. Decode it locally so the app never shows a blank user and
+// the peer file service always knows who we are.
+function identityFromToken(token) {
+  try {
+    const payload = JSON.parse(Buffer.from(String(token).split(".")[1], "base64url").toString("utf8"));
+    const discordUserId = String(payload.discordUserId || "");
+    const username = String(payload.username || "");
+    let avatarUrl = String(payload.avatar || "");
+    if (avatarUrl && !/^https:\/\//i.test(avatarUrl)) {
+      // raw Discord avatar hash from an older token
+      avatarUrl = discordUserId && /^[a-f0-9_]+$/i.test(avatarUrl)
+        ? `https://cdn.discordapp.com/avatars/${discordUserId}/${avatarUrl}.png?size=128`
+        : "";
+    }
+    return discordUserId ? { discordUserId, username, avatarUrl } : null;
+  } catch {
+    return null;
+  }
+}
+
+function fillIdentityFromToken() {
+  const cfg = readConfig();
+  if (!cfg.alleyToken || (cfg.alleyDiscordId && cfg.alleyUsername)) return;
+  const identity = identityFromToken(cfg.alleyToken);
+  if (!identity) return;
+  writeConfig({
+    alleyDiscordId: cfg.alleyDiscordId || identity.discordUserId,
+    alleyUsername: cfg.alleyUsername || identity.username,
+    alleyAvatarUrl: cfg.alleyAvatarUrl || identity.avatarUrl
+  });
+}
 
 function alleyBase() {
   return String(readConfig().alleyApiBase || "https://alley.vrchatlegends.com").replace(/\/$/, "");
@@ -105,6 +139,7 @@ ipcMain.handle("alley:login", async () => {
       alleyCommunityName: result.community ? String(result.community.name || "") : "",
       alleyCommunityId: result.community ? String(result.community.id || "") : "",
       alleyGroupId: result.community ? String(result.community.groupId || "") : "",
+      alleyLogoUrl: result.community ? String(result.community.logoUrl || "") : "",
       alleyDiscordId: result.user ? String(result.user.discordUserId || "") : "",
       alleyUsername: result.user ? String(result.user.username || "") : "",
       alleyAvatarUrl: result.user ? String(result.user.avatarUrl || "") : ""
@@ -121,6 +156,7 @@ ipcMain.handle("alley:logout", async () => {
     alleyCommunityName: "",
     alleyCommunityId: "",
     alleyGroupId: "",
+    alleyLogoUrl: "",
     alleyDiscordId: "",
     alleyUsername: "",
     alleyAvatarUrl: ""
@@ -140,10 +176,12 @@ ipcMain.handle("alley:request", async (_e, pathName, options) => {
       alleyCommunityName: community ? String(community.name || "") : "",
       alleyCommunityId: community ? String(community.id || "") : "",
       alleyGroupId: community ? String(community.groupId || "") : "",
+      alleyLogoUrl: community ? String(community.logoUrl || "") : cfg.alleyLogoUrl,
       alleyDiscordId: user ? String(user.discordUserId || "") : cfg.alleyDiscordId,
       alleyUsername: user ? String(user.username || "") : cfg.alleyUsername,
       alleyAvatarUrl: user ? String(user.avatarUrl || "") : cfg.alleyAvatarUrl
     });
+    if (!user) fillIdentityFromToken();
   }
   if ((res.status === 401 || res.status === 403) && pathName === "/api/auth/me") {
     writeConfig({
@@ -153,6 +191,7 @@ ipcMain.handle("alley:request", async (_e, pathName, options) => {
       alleyCommunityName: "",
       alleyCommunityId: "",
       alleyGroupId: "",
+      alleyLogoUrl: "",
       alleyDiscordId: "",
       alleyUsername: "",
       alleyAvatarUrl: ""
@@ -377,8 +416,54 @@ ipcMain.handle("updates:download", async () => await updater.download());
 ipcMain.handle("updates:install", () => updater.install());
 
 // ------------------------------------------------------------------
+// IPC: uninstall
+// ------------------------------------------------------------------
+
+ipcMain.handle("app:uninstall", async () => {
+  if (app.isPackaged) {
+    const uninstaller = path.join(path.dirname(process.execPath), "Uninstall Booth Manager.exe");
+    if (fs.existsSync(uninstaller)) {
+      spawn(uninstaller, [], { detached: true, stdio: "ignore" }).unref();
+      isQuitting = true;
+      setTimeout(() => app.quit(), 300);
+      return { ok: true };
+    }
+  }
+  // Fallback: open Windows installed-apps settings so the user can remove it there.
+  await shell.openExternal("ms-settings:appsfeatures");
+  return { ok: true, fallback: true };
+});
+
+// ------------------------------------------------------------------
 // window
 // ------------------------------------------------------------------
+
+let tray = null;
+let isQuitting = false;
+
+function showMainWindow() {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  if (!mainWindow.isVisible()) mainWindow.show();
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  mainWindow.focus();
+}
+
+function createTray() {
+  tray = new Tray(path.join(__dirname, "..", "assets", "app-icon.ico"));
+  tray.setToolTip("Booth Manager");
+  tray.setContextMenu(Menu.buildFromTemplate([
+    { label: "Open Booth Manager", click: () => showMainWindow() },
+    { type: "separator" },
+    {
+      label: "Quit",
+      click: () => {
+        isQuitting = true;
+        app.quit();
+      }
+    }
+  ]));
+  tray.on("double-click", () => showMainWindow());
+}
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -427,13 +512,22 @@ function createWindow() {
     if (/^https?:\/\//i.test(url)) shell.openExternal(url);
     return { action: "deny" };
   });
+
+  // Run in tray: closing the window hides it instead of quitting.
+  mainWindow.on("close", (event) => {
+    if (isQuitting) return;
+    if (readConfig().runInTray === false) return;
+    event.preventDefault();
+    mainWindow.hide();
+  });
 }
 
 app.on("second-instance", () => {
-  if (mainWindow) {
-    if (mainWindow.isMinimized()) mainWindow.restore();
-    mainWindow.focus();
-  }
+  showMainWindow();
+});
+
+app.on("before-quit", () => {
+  isQuitting = true;
 });
 
 app.whenReady().then(() => {
@@ -452,7 +546,9 @@ app.whenReady().then(() => {
     return net.fetch(pathToFileURL(filePath).href, { headers: request.headers });
   });
   fs.rmSync(RECEIVED_ROOT(), { recursive: true, force: true });
+  fillIdentityFromToken();
   createWindow();
+  createTray();
   updater.start((state) => {
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send("updates:state", state);

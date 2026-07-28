@@ -7,6 +7,7 @@ export default function SettingsPage({ cfg, refreshConfig, onLogout }) {
   const [update, setUpdate] = useState(null);
   const [alleyBase, setAlleyBase] = useState(cfg.alleyApiBase || "");
   const [msg, setMsg] = useState("");
+  const [confirmUninstall, setConfirmUninstall] = useState(false);
 
   useEffect(() => {
     api.getAppVersion().then(setVersion);
@@ -53,6 +54,16 @@ export default function SettingsPage({ cfg, refreshConfig, onLogout }) {
       </div>
 
       <div className="card">
+        <h3>Window</h3>
+        <ToggleRow
+          label="Run in tray"
+          desc="Closing the window keeps Booth Manager in the system tray so peer file sharing stays online"
+          value={cfg.runInTray !== false}
+          onChange={(v) => toggle("runInTray", v)}
+        />
+      </div>
+
+      <div className="card">
         <h3>Updates</h3>
         <div className="row">
           <div className="grow">
@@ -87,6 +98,7 @@ export default function SettingsPage({ cfg, refreshConfig, onLogout }) {
       <div className="card">
         <h3>Account</h3>
         <div className="row account-row">
+          {cfg.alleyAvatarUrl && <img className="account-avatar" src={cfg.alleyAvatarUrl} alt="" />}
           <div className="grow">
             <div className="small" style={{ fontWeight: 600 }}>{cfg.alleyUsername || "Signed in with Discord"}</div>
             <div className="muted tiny mt8 account-details">
@@ -96,6 +108,23 @@ export default function SettingsPage({ cfg, refreshConfig, onLogout }) {
             </div>
           </div>
           <button className="danger" onClick={onLogout}>Sign out</button>
+        </div>
+      </div>
+
+      <div className="card danger-card">
+        <h3>Uninstall</h3>
+        <div className="row account-row">
+          <div className="grow">
+            <div className="small" style={{ fontWeight: 600 }}>Remove Booth Manager from this computer</div>
+            <div className="muted tiny mt8">Launches the Windows uninstaller and closes the app. Your Legends Alley uploads stay on the server.</div>
+          </div>
+          {!confirmUninstall && <button className="danger" onClick={() => setConfirmUninstall(true)}>Uninstall</button>}
+          {confirmUninstall && (
+            <>
+              <button onClick={() => setConfirmUninstall(false)}>Keep it</button>
+              <button className="danger" onClick={() => api.uninstallApp()}>Yes, uninstall</button>
+            </>
+          )}
         </div>
       </div>
 

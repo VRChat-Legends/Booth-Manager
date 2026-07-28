@@ -204,16 +204,19 @@ class PeerFileService {
     if (!this.identity?.userId) throw new Error("Connect to Legends Alley first.");
     if (communityId) this.setCommunity(communityId);
     if (!this.identity.communityId) throw new Error("Choose a community chat room first.");
-    if (!attachment?.available) {
-      this.setTransfer(attachment?.id, { status: "unavailable", error: "The uploader's local file is not available." });
-      return;
-    }
 
-    if (String(attachment.authorId) === this.identity.userId) {
+    // Our own attachments resolve straight from disk, regardless of what the
+    // server availability flag says (heartbeats may simply not have landed yet).
+    if (String(attachment?.authorId) === this.identity.userId) {
       const local = await api.getLocalShareStatus(attachment.id);
       this.setTransfer(attachment.id, local.available
         ? { status: "ready", progress: 1, localUrl: local.localUrl, own: true, name: attachment.name }
         : { status: "unavailable", error: "This file was moved, changed, or deleted on this computer." });
+      return;
+    }
+
+    if (!attachment?.available) {
+      this.setTransfer(attachment?.id, { status: "unavailable", error: "The uploader's local file is not available." });
       return;
     }
 

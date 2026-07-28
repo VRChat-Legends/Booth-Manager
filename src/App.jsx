@@ -2,10 +2,13 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Box,
   Boxes,
+  Bug,
   Building2,
   LayoutDashboard,
+  LifeBuoy,
   LockKeyhole,
   MessageSquareText,
+  ScrollText,
   Settings,
   ShieldCheck,
   Sparkles,
@@ -34,7 +37,11 @@ const NAV = [
   { id: "alleyAdmin", label: "Alley Admin", Icon: ShieldCheck, staffOnly: true },
   { section: "Tools" },
   { id: "builder", label: "Booth Builder", Icon: Box, badge: "Soon", disabled: true },
-  { id: "standee", label: "Standee Studio", Icon: Sparkles }
+  { id: "standee", label: "Standee Studio", Icon: Sparkles },
+  { section: "Resources" },
+  { id: "support", label: "Support", Icon: LifeBuoy, badge: "Soon", disabled: true },
+  { id: "bugs", label: "Bug Tracker", Icon: Bug, badge: "Soon", disabled: true },
+  { id: "changelog", label: "Change Log", Icon: ScrollText, badge: "Soon", disabled: true }
 ];
 
 const TITLES = {
@@ -235,7 +242,7 @@ export default function App() {
             key={item.id}
             className={`navitem${effectivePage === item.id ? " active" : ""}`}
             disabled={item.disabled || (appLocked && item.id !== "booths")}
-            title={item.disabled ? "Booth Builder is coming later" : appLocked && item.id !== "booths" ? "Backup-only mode is active" : ""}
+            title={item.disabled ? "Coming soon" : appLocked && item.id !== "booths" ? "Backup-only mode is active" : ""}
             onClick={() => !item.disabled && setPage(item.id)}
           >
             <item.Icon className="ico" size={17} strokeWidth={1.8} />
@@ -276,7 +283,9 @@ export default function App() {
           </div>
           <div className="spacer" />
           <div className="community-chip">
-            <Building2 size={15} />
+            {cfg.alleyLogoUrl
+              ? <img className="chip-logo" src={cfg.alleyLogoUrl} alt="" />
+              : <Building2 size={15} />}
             <span>
               <strong>{cfg.alleyCommunityName || "Alley Staff"}</strong>
               <small>{cfg.alleyGroupId || (isStaff ? "All communities" : "Group ID pending")}</small>
