@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { File, Image, Megaphone, Music, Paperclip, Video, X } from "lucide-react";
 import * as api from "../lib/api.js";
 import * as audio from "../lib/audio.js";
+import { MarkdownView } from "../lib/markdown.jsx";
 import { AlleyBoothRow } from "./AlleyDashboardPage.jsx";
 
 export default function AlleyAdminPage({ cfg }) {
@@ -8,6 +10,7 @@ export default function AlleyAdminPage({ cfg }) {
   const [tab, setTab] = useState("applications");
   const [error, setError] = useState("");
   const [counts, setCounts] = useState({ pending: 0, communities: 0, booths: 0 });
+  const [composing, setComposing] = useState(false);
 
   useEffect(() => {
     if (!isStaff) return;
@@ -40,6 +43,7 @@ export default function AlleyAdminPage({ cfg }) {
           <h1>Alley Admin</h1>
           <div className="sub">Staff console for the Legends Alley service</div>
         </div>
+        <button className="primary small" onClick={() => setComposing(true)}><Megaphone size={14} />Send popup</button>
         <button className="ghost small" onClick={() => api.openExternal("https://vrchatlegends.com/alley/admin")}>Open on the website</button>
       </div>
 
@@ -61,6 +65,94 @@ export default function AlleyAdminPage({ cfg }) {
       {tab === "communities" && <Communities />}
       {tab === "events" && <Events />}
       {tab === "booths" && <StaffBooths />}
+      {composing && <BroadcastComposer onClose={() => setComposing(false)} />}
+    </div>
+  );
+}
+
+/* staff popup composer: markdown body plus optional media and downloads,
+   delivered only to users whose app is open right now */
+function BroadcastComposer({ onClose }) {
+  const [title, setTitle] = useState("");
+  const [body, setBody] = useState("");
+  const [assets, setAssets] = useState([]);
+  const [preview, setPreview] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [err, setErr] = useState("");
+
+  const attach = async () => {
+    setErr("");
+    const result = await api.broadcastUploadAssets();
+    if (result.assets?.length) setAssets((current) => [...current, ...result.assets].slice(0, 6));
+    if (result.rejected?.length) setErr(result.rejected.map((item) => `${item.name}: ${item.error}`).join(" "));
+  };
+
+  const send = async () => {
+    if (!body.trim() && !assets.length) {
+      setErr("Write a message or attach a file.");
+      return;
+    }
+    setSending(true);
+    setErr("");
+    const result = await api.alley("/api/broadcasts", {
+      method: "POST",
+      json: { title: title.trim(), body, assetIds: assets.map((asset) => asset.id) }
+    });
+    setSending(false);
+    if (result.status === 201) {
+      audio.success();
+      onClose();
+    } else {
+      setErr(result.error || "The popup was not sent.");
+    }
+  };
+
+  return (
+    <div className="modal-scrim" onClick={onClose}>
+      <div className="modal broadcast-compose" onClick={(clickEvent) => clickEvent.stopPropagation()}>
+        <h2><Megaphone size={17} /> Send a popup to everyone online</h2>
+        <p className="muted small mb12">Shows instantly for every user whose app is open right now. People who are offline never see it.</p>
+        <label className="field"><span>Title (optional)</span>
+          <input type="text" maxLength={120} value={title} onChange={(changeEvent) => setTitle(changeEvent.target.value)} placeholder="Heads up from the Alley staff" />
+        </label>
+        <div className="row mb8" style={{ alignItems: "center" }}>
+          <span className="muted tiny">Markdown: # headings, **bold**, *italic*, `code`, lists, quotes, [links](https://...)</span>
+          <button className="ghost small right" onClick={() => setPreview((current) => !current)}>{preview ? "Edit" : "Preview"}</button>
+        </div>
+        {!preview && (
+          <textarea
+            value={body}
+            maxLength={4000}
+            onChange={(changeEvent) => setBody(changeEvent.target.value)}
+            placeholder="Write the announcement..."
+            style={{ minHeight: 180 }}
+          />
+        )}
+        {preview && (
+          <div className="broadcast-preview">
+            {body.trim() ? <MarkdownView text={body} /> : <span className="muted small">Nothing to preview yet.</span>}
+          </div>
+        )}
+        {assets.length > 0 && (
+          <div className="pending-files mt8">
+            {assets.map((asset) => (
+              <span key={asset.id}>
+                {asset.kind === "image" ? <Image size={13} /> : asset.kind === "video" ? <Video size={13} /> : asset.kind === "audio" ? <Music size={13} /> : <File size={13} />}
+                <strong>{asset.name}</strong>
+                <small>{api.formatBytes(asset.size)}</small>
+                <button title="Remove attachment" onClick={() => setAssets((current) => current.filter((entry) => entry.id !== asset.id))}><X size={12} /></button>
+              </span>
+            ))}
+          </div>
+        )}
+        {err && <div className="errbox mt8">{err}</div>}
+        <div className="actions">
+          <button onClick={attach} disabled={assets.length >= 6}><Paperclip size={14} />Attach files</button>
+          <span style={{ flex: 1 }} />
+          <button onClick={onClose}>Cancel</button>
+          <button className="primary" onClick={send} disabled={sending}>{sending ? "Sending..." : "Send popup"}</button>
+        </div>
+      </div>
     </div>
   );
 }

@@ -74,7 +74,7 @@ export default function BoothsPage({ cfg, appLocked, event, newUploadIds, onAckn
   }, [booths, query]);
 
   const download = async (booth) => {
-    setDownloading(booth.id);
+    setDownloading(`${booth.id}-v${booth.version}`);
     setError("");
     const safeName = String(booth.prefabName || "booth").replace(/[^A-Za-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "") || "booth";
     const result = await api.alleyDownload(booth.downloadUrl || `/api/booths/${booth.id}/download`, `${safeName}-v${booth.version}-backup.zip`);
@@ -121,8 +121,12 @@ export default function BoothsPage({ cfg, appLocked, event, newUploadIds, onAckn
       )}
 
       <div className="upload-card-grid">
-        {filtered.map((booth) => (
-          <article className={`upload-card${newUploadIds?.has(String(booth.id)) ? " new" : ""}`} key={booth.id}>
+        {filtered.map((booth) => {
+          // Older uploads can share one server id across versions, so key and
+          // expansion tracking use id plus version to stay unique per card.
+          const boothKey = `${booth.id}-v${booth.version}`;
+          return (
+          <article className={`upload-card${newUploadIds?.has(String(booth.id)) ? " new" : ""}`} key={boothKey}>
             <BoothPreview booth={booth} />
             <div className="upload-card-body">
               <div className="upload-title-row">
@@ -141,17 +145,18 @@ export default function BoothsPage({ cfg, appLocked, event, newUploadIds, onAckn
                 <span>{booth.shaders?.length || 0} shaders</span>
                 {booth.limitsBypassed && <span className="pill amber" title="A staff member accepted this upload past normal limits">LIMITS BYPASSED</span>}
                 {newUploadIds?.has(String(booth.id)) && <span className="pill new-pill">NEW</span>}
-                <button className="ghost right" onClick={() => setExpandedId((current) => current === booth.id ? "" : booth.id)}>
-                  <ChevronDown size={15} className={expandedId === booth.id ? "flip" : ""} />{expandedId === booth.id ? "Hide details" : "Details"}
+                <button className="ghost right" onClick={() => setExpandedId((current) => current === boothKey ? "" : boothKey)}>
+                  <ChevronDown size={15} className={expandedId === boothKey ? "flip" : ""} />{expandedId === boothKey ? "Hide details" : "Details"}
                 </button>
-                <button className="primary" onClick={() => download(booth)} disabled={downloading === booth.id}>
-                  <Download size={15} />{downloading === booth.id ? "Downloading" : "Download ZIP"}
+                <button className="primary" onClick={() => download(booth)} disabled={downloading === boothKey}>
+                  <Download size={15} />{downloading === boothKey ? "Downloading" : "Download ZIP"}
                 </button>
               </div>
-              {expandedId === booth.id && <BoothDetails booth={booth} />}
+              {expandedId === boothKey && <BoothDetails booth={booth} />}
             </div>
           </article>
-        ))}
+          );
+        })}
       </div>
     </div>
   );

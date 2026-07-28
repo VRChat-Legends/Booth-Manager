@@ -19,8 +19,8 @@ export default function SettingsPage({ cfg, refreshConfig, onLogout }) {
   const toggle = async (key, value) => {
     await api.saveConfig({ [key]: value });
     await refreshConfig();
-    if (key === "musicEnabled") audio.setMusicEnabled(value);
     if (key === "sfxEnabled") audio.setSfxEnabled(value);
+    if (key === "pingSoundEnabled") audio.setPingEnabled(value);
   };
 
   const saveBases = async () => {
@@ -40,16 +40,16 @@ export default function SettingsPage({ cfg, refreshConfig, onLogout }) {
       <div className="card">
         <h3>Sound</h3>
         <ToggleRow
-          label="Background music"
-          desc="Synthesized ambient loop, generated live in the app"
-          value={cfg.musicEnabled !== false}
-          onChange={(v) => toggle("musicEnabled", v)}
-        />
-        <ToggleRow
           label="UI sounds"
           desc="Clicks and success chimes"
           value={cfg.sfxEnabled !== false}
           onChange={(v) => toggle("sfxEnabled", v)}
+        />
+        <ToggleRow
+          label="Ping sound"
+          desc="Plays a chime when someone @mentions you in team chat"
+          value={cfg.pingSoundEnabled !== false}
+          onChange={(v) => toggle("pingSoundEnabled", v)}
         />
       </div>
 
@@ -60,6 +60,12 @@ export default function SettingsPage({ cfg, refreshConfig, onLogout }) {
           desc="Closing the window keeps Booth Manager in the system tray so peer file sharing stays online"
           value={cfg.runInTray !== false}
           onChange={(v) => toggle("runInTray", v)}
+        />
+        <ToggleRow
+          label="Start with Windows"
+          desc="Launches Booth Manager minimized to the tray when you sign in to Windows"
+          value={cfg.startWithWindows === true}
+          onChange={(v) => toggle("startWithWindows", v)}
         />
       </div>
 

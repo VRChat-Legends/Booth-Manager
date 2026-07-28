@@ -5,7 +5,7 @@ const path = require("path");
 const { app } = require("electron");
 
 const FILE = () => path.join(app.getPath("userData"), "settings.json");
-const LEGACY_KEYS = ["apiBase", "bmToken", "bmRole", "bmUsername", "bmAvatarUrl", "bmDiscordId"];
+const LEGACY_KEYS = ["apiBase", "bmToken", "bmRole", "bmUsername", "bmAvatarUrl", "bmDiscordId", "musicEnabled"];
 
 const DEFAULTS = {
   alleyApiBase: "https://alley.vrchatlegends.com",
@@ -23,9 +23,10 @@ const DEFAULTS = {
   seenBoothUploadIds: [],
   seenBoothUploadsInitialized: false,
   // preferences
-  musicEnabled: true,
   sfxEnabled: true,
-  runInTray: true
+  pingSoundEnabled: true,
+  runInTray: true,
+  startWithWindows: false
 };
 
 let cache = null;

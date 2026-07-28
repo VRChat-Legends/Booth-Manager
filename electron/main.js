@@ -2,11 +2,10 @@
 
 const path = require("path");
 const fs = require("fs");
-const { pathToFileURL } = require("url");
 const { Readable } = require("stream");
 const { pipeline } = require("stream/promises");
 const { spawn } = require("child_process");
-const { app, BrowserWindow, Menu, Tray, dialog, ipcMain, shell, protocol, net } = require("electron");
+const { app, BrowserWindow, Menu, Tray, dialog, ipcMain, shell, protocol, session } = require("electron");
 const { readConfig, writeConfig } = require("./configStore");
 const shareStore = require("./shareStore");
 const auth = require("./auth");
@@ -76,8 +75,29 @@ function alleyBase() {
 // so tokens stay in the main process and CORS never applies)
 // ------------------------------------------------------------------
 
+const BLOCKED_HOSTS = /^(localhost|127\.|0\.|10\.|192\.168\.|169\.254\.|\[?::1)/i;
+
+// A compromised renderer must never be able to point these helpers at
+// file:// paths, other protocols, or a different origin than the service.
+function resolveProxyUrl(base, pathName) {
+  const raw = String(pathName || "");
+  if (base) {
+    if (!raw.startsWith("/") || raw.startsWith("//") || raw.includes("\\")) return null;
+    let url;
+    try { url = new URL(base + raw); } catch { return null; }
+    if (url.origin !== new URL(base).origin) return null;
+    return url;
+  }
+  let url;
+  try { url = new URL(raw); } catch { return null; }
+  if (url.protocol !== "https:" || BLOCKED_HOSTS.test(url.hostname)) return null;
+  return url;
+}
+
 async function proxyFetch(base, token, pathName, options = {}) {
-  const url = base + pathName;
+  const target = resolveProxyUrl(base, pathName);
+  if (!target) return { status: 0, data: null, error: "Blocked request path." };
+  const url = target.href;
   const headers = { ...(options.headers || {}) };
   if (token) headers.Authorization = `Bearer ${token}`;
 
@@ -118,7 +138,11 @@ async function proxyFetch(base, token, pathName, options = {}) {
 // ------------------------------------------------------------------
 
 ipcMain.handle("config:get", () => readConfig());
-ipcMain.handle("config:save", (_e, patch) => writeConfig(patch));
+ipcMain.handle("config:save", (_e, patch) => {
+  const result = writeConfig(patch);
+  if (patch && Object.prototype.hasOwnProperty.call(patch, "startWithWindows")) applyLoginItemSettings();
+  return result;
+});
 ipcMain.handle("app:version", () => app.getVersion());
 ipcMain.handle("app:openExternal", async (_e, url) => {
   const s = String(url || "");
@@ -202,12 +226,16 @@ ipcMain.handle("alley:request", async (_e, pathName, options) => {
 
 ipcMain.handle("alley:download", async (_e, pathName, defaultName) => {
   const requestPath = String(pathName || "");
-  if (!/^\/api\/booths\/[A-Za-z0-9_-]+\/download$/.test(requestPath)) {
-    return { ok: false, error: "That is not a booth backup download." };
+  const isBooth = /^\/api\/booths\/[A-Za-z0-9_-]+\/download$/.test(requestPath);
+  const isBroadcastAsset = /^\/api\/broadcasts\/assets\/[A-Za-z0-9_-]+$/.test(requestPath);
+  if (!isBooth && !isBroadcastAsset) {
+    return { ok: false, error: "That download is not allowed." };
   }
   const picked = await dialog.showSaveDialog(mainWindow, {
-    defaultPath: String(defaultName || "booth-backup.zip"),
-    filters: [{ name: "Booth backup", extensions: ["zip"] }]
+    defaultPath: String(defaultName || (isBooth ? "booth-backup.zip" : "attachment")),
+    filters: isBooth
+      ? [{ name: "Booth backup", extensions: ["zip"] }]
+      : [{ name: "All files", extensions: ["*"] }]
   });
   if (picked.canceled || !picked.filePath) return { ok: false, canceled: true };
 
@@ -233,13 +261,45 @@ ipcMain.handle("alley:download", async (_e, pathName, defaultName) => {
 ipcMain.handle("alley:image", async (_e, pathOrUrl) => {
   const cfg = readConfig();
   const p = String(pathOrUrl || "");
-  const full = /^https?:\/\//i.test(p) ? p : alleyBase() + p;
-  if (/^https?:\/\//i.test(p) && !p.startsWith(alleyBase())) {
-    // absolute non-alley URL: fetch without token
-    return await proxyFetch("", "", full, { binary: true });
+  const alleyOrigin = new URL(alleyBase()).origin;
+  if (/^https?:\/\//i.test(p)) {
+    let parsed = null;
+    try { parsed = new URL(p); } catch { parsed = null; }
+    if (!parsed) return { status: 0, error: "Blocked request path." };
+    if (parsed.origin === alleyOrigin) {
+      return await proxyFetch(alleyBase(), cfg.alleyToken, parsed.pathname + parsed.search, { binary: true });
+    }
+    // absolute non-alley URL (e.g. Discord CDN): https only, never with our token
+    return await proxyFetch("", "", p, { binary: true });
   }
-  return await proxyFetch(alleyBase(), cfg.alleyToken, full.replace(alleyBase(), ""), { binary: true });
+  return await proxyFetch(alleyBase(), cfg.alleyToken, p, { binary: true });
 });
+
+// ------------------------------------------------------------------
+// IPC: GitHub (public repo metadata for the changelog + bug tracker)
+// ------------------------------------------------------------------
+
+const GITHUB_REPO = "VRChat-Legends/Booth-Manager";
+const githubCache = new Map();
+
+async function githubGet(apiPath) {
+  const cached = githubCache.get(apiPath);
+  if (cached && Date.now() - cached.at < 10 * 60 * 1000) return cached.value;
+  try {
+    const res = await fetch(`https://api.github.com${apiPath}`, {
+      headers: { "User-Agent": "BoothManager", Accept: "application/vnd.github+json" }
+    });
+    if (!res.ok) return { status: res.status, data: null, error: `GitHub returned HTTP ${res.status}` };
+    const value = { status: res.status, data: await res.json(), error: "" };
+    githubCache.set(apiPath, { at: Date.now(), value });
+    return value;
+  } catch (ex) {
+    return { status: 0, data: null, error: String(ex && ex.message ? ex.message : ex) };
+  }
+}
+
+ipcMain.handle("github:releases", async () => githubGet(`/repos/${GITHUB_REPO}/releases?per_page=20`));
+ipcMain.handle("github:issues", async () => githubGet(`/repos/${GITHUB_REPO}/issues?state=all&per_page=50`));
 
 // ------------------------------------------------------------------
 // IPC: file dialogs + disk io for standee outputs
@@ -270,6 +330,45 @@ ipcMain.handle("dialog:openSharedFiles", async () => {
   if (res.canceled || !res.filePaths.length) return { ok: false, files: [], rejected: [] };
   const result = shareStore.addPaths(res.filePaths.slice(0, 5));
   return { ok: result.files.length > 0, ...result };
+});
+
+ipcMain.handle("dialog:openSharedFolder", async () => {
+  const res = await dialog.showOpenDialog(mainWindow, { properties: ["openDirectory"] });
+  if (res.canceled || !res.filePaths.length) return { ok: false, canceled: true };
+  return shareStore.addFolder(res.filePaths[0]);
+});
+
+// staff popup attachments upload straight from disk so the renderer never
+// holds the bytes; the service enforces staff auth and the 40 MB cap again
+ipcMain.handle("alley:broadcastAssets", async () => {
+  const res = await dialog.showOpenDialog(mainWindow, { properties: ["openFile", "multiSelections"] });
+  if (res.canceled || !res.filePaths.length) return { ok: false, assets: [], rejected: [] };
+  const cfg = readConfig();
+  const assets = [];
+  const rejected = [];
+  for (const filePath of res.filePaths.slice(0, 6)) {
+    const name = path.basename(filePath).slice(0, 160);
+    try {
+      const stat = fs.statSync(filePath);
+      if (!stat.isFile()) throw new Error("Not a file.");
+      if (stat.size > 40 * 1024 * 1024) throw new Error("Popup attachments must be 40 MB or smaller.");
+      const mime = shareStore.mimeFor(filePath);
+      const response = await fetch(
+        `${alleyBase()}/api/broadcasts/assets?name=${encodeURIComponent(name)}&mime=${encodeURIComponent(mime)}`,
+        {
+          method: "POST",
+          headers: { Authorization: `Bearer ${cfg.alleyToken}`, "Content-Type": mime },
+          body: fs.readFileSync(filePath)
+        }
+      );
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || `Upload failed (${response.status}).`);
+      if (data.asset) assets.push(data.asset);
+    } catch (error) {
+      rejected.push({ name, error: String(error.message || error) });
+    }
+  }
+  return { ok: assets.length > 0, assets, rejected };
 });
 
 ipcMain.handle("shares:list", () => shareStore.list());
@@ -440,6 +539,16 @@ ipcMain.handle("app:uninstall", async () => {
 
 let tray = null;
 let isQuitting = false;
+let trayBalloonShown = false;
+const startHidden = process.argv.includes("--hidden");
+
+function applyLoginItemSettings() {
+  if (!app.isPackaged || process.platform !== "win32") return;
+  app.setLoginItemSettings({
+    openAtLogin: readConfig().startWithWindows === true,
+    args: ["--hidden"]
+  });
+}
 
 function showMainWindow() {
   if (!mainWindow || mainWindow.isDestroyed()) return;
@@ -484,11 +593,11 @@ function createWindow() {
   });
   Menu.setApplicationMenu(null);
 
-  mainWindow.once("ready-to-show", () => mainWindow.show());
+  mainWindow.once("ready-to-show", () => { if (!startHidden) mainWindow.show(); });
   // Safety net: if the renderer stalls (e.g. vite optimizing deps on first run),
   // show the window anyway so the app never appears to silently not launch.
   setTimeout(() => {
-    if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.isVisible()) mainWindow.show();
+    if (!startHidden && mainWindow && !mainWindow.isDestroyed() && !mainWindow.isVisible()) mainWindow.show();
   }, 5000);
 
   if (process.env.VITE_DEV_SERVER === "1" || !app.isPackaged) {
@@ -513,12 +622,26 @@ function createWindow() {
     return { action: "deny" };
   });
 
+  // The app never navigates; block anything that tries.
+  mainWindow.webContents.on("will-navigate", (event, url) => {
+    const devOk = !app.isPackaged && url.startsWith("http://127.0.0.1:5175");
+    if (!devOk) event.preventDefault();
+  });
+
   // Run in tray: closing the window hides it instead of quitting.
   mainWindow.on("close", (event) => {
     if (isQuitting) return;
     if (readConfig().runInTray === false) return;
     event.preventDefault();
     mainWindow.hide();
+    if (!trayBalloonShown && tray && process.platform === "win32") {
+      trayBalloonShown = true;
+      tray.displayBalloon({
+        iconType: "info",
+        title: "Booth Manager is still running",
+        content: "The app is running in the tray. Double-click the tray icon to reopen it, or right-click it to quit."
+      });
+    }
   });
 }
 
@@ -531,22 +654,62 @@ app.on("before-quit", () => {
 });
 
 app.whenReady().then(() => {
+  // The renderer needs no special browser permissions (mic, camera, geolocation, ...).
+  session.defaultSession.setPermissionRequestHandler((_wc, permission, callback) => {
+    callback(["clipboard-sanitized-write", "fullscreen"].includes(permission));
+  });
+
   protocol.handle("booth-local", (request) => {
     const url = new URL(request.url);
     const id = url.pathname.replace(/^\//, "");
     let filePath = "";
+    let mime = "application/octet-stream";
     if (url.hostname === "shared") {
       const record = shareStore.get(id);
-      if (record && shareStore.status(id).available) filePath = record.path;
+      if (record && shareStore.status(id).available) {
+        filePath = record.path;
+        mime = record.mime || mime;
+      }
     } else if (url.hostname === "received") {
       const received = receivedFiles.get(id);
-      if (received && fs.existsSync(received.path)) filePath = received.path;
+      if (received && fs.existsSync(received.path)) {
+        filePath = received.path;
+        mime = received.mime || mime;
+      }
     }
     if (!filePath) return new Response("Local file unavailable", { status: 404 });
-    return net.fetch(pathToFileURL(filePath).href, { headers: request.headers });
+
+    // Serve byte ranges ourselves so <video> can seek local files.
+    let size = 0;
+    try { size = fs.statSync(filePath).size; } catch { return new Response("Local file unavailable", { status: 404 }); }
+    const baseHeaders = { "Content-Type": mime, "Accept-Ranges": "bytes" };
+    const range = /^bytes=(\d*)-(\d*)$/.exec(String(request.headers.get("range") || ""));
+    if (range && (range[1] || range[2])) {
+      let start = range[1] ? parseInt(range[1], 10) : NaN;
+      let end = range[2] ? parseInt(range[2], 10) : NaN;
+      if (Number.isNaN(start)) { start = Math.max(0, size - end); end = size - 1; }
+      else if (Number.isNaN(end)) end = size - 1;
+      end = Math.min(end, size - 1);
+      if (!Number.isFinite(start) || start > end || start >= size) {
+        return new Response(null, { status: 416, headers: { "Content-Range": `bytes */${size}` } });
+      }
+      return new Response(Readable.toWeb(fs.createReadStream(filePath, { start, end })), {
+        status: 206,
+        headers: {
+          ...baseHeaders,
+          "Content-Range": `bytes ${start}-${end}/${size}`,
+          "Content-Length": String(end - start + 1)
+        }
+      });
+    }
+    return new Response(Readable.toWeb(fs.createReadStream(filePath)), {
+      status: 200,
+      headers: { ...baseHeaders, "Content-Length": String(size) }
+    });
   });
   fs.rmSync(RECEIVED_ROOT(), { recursive: true, force: true });
   fillIdentityFromToken();
+  applyLoginItemSettings();
   createWindow();
   createTray();
   updater.start((state) => {

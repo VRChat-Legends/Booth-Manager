@@ -395,7 +395,10 @@ class PeerFileService {
   watchAttachments(attachments) {
     if (!this.identity?.userId) return;
     for (const attachment of attachments || []) {
-      if (String(attachment.authorId) === this.identity.userId) this.watchedAttachments.add(String(attachment.id));
+      if (String(attachment.authorId) !== this.identity.userId) continue;
+      this.watchedAttachments.add(String(attachment.id));
+      // folder entries heartbeat individually so per-file availability stays live
+      for (const entry of attachment.entries || []) this.watchedAttachments.add(String(entry.id));
     }
     this.heartbeat();
   }

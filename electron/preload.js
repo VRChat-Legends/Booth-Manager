@@ -15,9 +15,15 @@ contextBridge.exposeInMainWorld("boothApi", {
   alleyDownload: (path, defaultName) => ipcRenderer.invoke("alley:download", path, defaultName),
   alleyImage: (pathOrUrl) => ipcRenderer.invoke("alley:image", pathOrUrl),
 
+  // github (changelog + bug tracker)
+  githubReleases: () => ipcRenderer.invoke("github:releases"),
+  githubIssues: () => ipcRenderer.invoke("github:issues"),
+
   // dialogs + files
   openImageDialog: (opts) => ipcRenderer.invoke("dialog:openImage", opts),
   openSharedFiles: () => ipcRenderer.invoke("dialog:openSharedFiles"),
+  openSharedFolder: () => ipcRenderer.invoke("dialog:openSharedFolder"),
+  broadcastUploadAssets: () => ipcRenderer.invoke("alley:broadcastAssets"),
   saveFileDialog: (opts) => ipcRenderer.invoke("dialog:saveFile", opts),
   pickFolder: () => ipcRenderer.invoke("dialog:pickFolder"),
   writeFile: (path, dataBase64) => ipcRenderer.invoke("fs:writeFile", path, dataBase64),

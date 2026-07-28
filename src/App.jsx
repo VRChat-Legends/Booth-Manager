@@ -1,12 +1,14 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Box,
   Boxes,
   Bug,
   Building2,
+  Download,
   LayoutDashboard,
   LifeBuoy,
   LockKeyhole,
+  Megaphone,
   MessageSquareText,
   ScrollText,
   Settings,
@@ -16,6 +18,7 @@ import {
 } from "lucide-react";
 import * as api from "./lib/api.js";
 import * as audio from "./lib/audio.js";
+import { MarkdownView, BroadcastMedia } from "./lib/markdown.jsx";
 import peerFiles from "./lib/peerFiles.js";
 import LoginPage from "./pages/LoginPage.jsx";
 import DashboardPage from "./pages/DashboardPage.jsx";
@@ -25,6 +28,8 @@ import AlleyAdminPage from "./pages/AlleyAdminPage.jsx";
 import StandeePage from "./pages/StandeePage.jsx";
 import SettingsPage from "./pages/SettingsPage.jsx";
 import TeamChatPage from "./pages/TeamChatPage.jsx";
+import ChangelogPage from "./pages/ChangelogPage.jsx";
+import BugsPage from "./pages/BugsPage.jsx";
 import logoUrl from "../assets/app-icon.png";
 
 const NAV = [
@@ -40,8 +45,8 @@ const NAV = [
   { id: "standee", label: "Standee Studio", Icon: Sparkles },
   { section: "Resources" },
   { id: "support", label: "Support", Icon: LifeBuoy, badge: "Soon", disabled: true },
-  { id: "bugs", label: "Bug Tracker", Icon: Bug, badge: "Soon", disabled: true },
-  { id: "changelog", label: "Change Log", Icon: ScrollText, badge: "Soon", disabled: true }
+  { id: "bugs", label: "Bug Tracker", Icon: Bug },
+  { id: "changelog", label: "Change Log", Icon: ScrollText }
 ];
 
 const TITLES = {
@@ -51,6 +56,8 @@ const TITLES = {
   alleyDashboard: "Community",
   alleyAdmin: "Alley Admin",
   standee: "Standee Studio",
+  bugs: "Bug Tracker",
+  changelog: "Change Log",
   settings: "Settings"
 };
 
@@ -63,6 +70,9 @@ export default function App() {
   const [newUploads, setNewUploads] = useState([]);
   const [update, setUpdate] = useState(null);
   const [updateDismissed, setUpdateDismissed] = useState(false);
+  const [popups, setPopups] = useState([]);
+  const sessionStartRef = useRef(new Date().toISOString());
+  const seenBroadcastsRef = useRef(new Set());
 
   const refreshConfig = useCallback(async () => {
     const next = await api.getConfig();
@@ -75,6 +85,7 @@ export default function App() {
     (async () => {
       const current = await refreshConfig();
       audio.setSfxEnabled(current.sfxEnabled !== false);
+      audio.setPingEnabled(current.pingSoundEnabled !== false);
       if (current.alleyToken) {
         const result = await api.alley("/api/auth/me");
         if (!disposed && (result.status === 401 || result.status === 403)) {
@@ -163,16 +174,6 @@ export default function App() {
     };
   }, [cfg?.alleyToken, cfg?.alleyCommunityId, cfg?.seenBoothUploadsInitialized, cfg?.seenBoothUploadIds]);
 
-  useEffect(() => {
-    if (!cfg?.alleyToken) return undefined;
-    const start = () => {
-      if (cfg.musicEnabled !== false) audio.setMusicEnabled(true);
-      window.removeEventListener("pointerdown", start);
-    };
-    window.addEventListener("pointerdown", start);
-    return () => window.removeEventListener("pointerdown", start);
-  }, [cfg?.alleyToken, cfg?.musicEnabled]);
-
   const loggedIn = Boolean(cfg?.alleyToken);
   const isStaff = cfg?.alleyStaff === true;
   const appLocked = event?.appLocked === true && !isStaff;
@@ -199,9 +200,42 @@ export default function App() {
   const logout = useCallback(async () => {
     peerFiles.stop();
     await api.alleyLogout();
-    audio.setMusicEnabled(false);
     await refreshConfig();
   }, [refreshConfig]);
+
+  // Staff popups plus the access watchdog: this poll runs against the strict
+  // membership middleware, so a removed team member or a deactivated
+  // community turns into a 401/403 here and signs the app out.
+  useEffect(() => {
+    if (!cfg?.alleyToken) return undefined;
+    let disposed = false;
+    const poll = async () => {
+      const result = await api.alley(`/api/broadcasts?since=${encodeURIComponent(sessionStartRef.current)}`);
+      if (disposed) return;
+      if (result.status === 401 || result.status === 403) {
+        setLoginError(result.error || "Your Legends Alley access changed. Sign in again.");
+        setPopups([]);
+        await logout();
+        return;
+      }
+      if (result.status !== 200) return;
+      const seen = seenBroadcastsRef.current;
+      const sessionStart = Date.parse(sessionStartRef.current);
+      const fresh = (result.data?.broadcasts || []).filter((broadcast) =>
+        !seen.has(broadcast.id) && Date.parse(broadcast.createdAt) >= sessionStart);
+      for (const broadcast of fresh) seen.add(broadcast.id);
+      if (fresh.length) {
+        audio.ping();
+        setPopups((current) => [...current, ...fresh]);
+      }
+    };
+    poll();
+    const timer = window.setInterval(poll, 45_000);
+    return () => {
+      disposed = true;
+      window.clearInterval(timer);
+    };
+  }, [cfg?.alleyToken, logout]);
 
   const acknowledgeUploads = useCallback(async () => {
     if (!newUploads.length) return;
@@ -224,6 +258,8 @@ export default function App() {
     alleyDashboard: AlleyDashboardPage,
     alleyAdmin: AlleyAdminPage,
     standee: StandeePage,
+    bugs: BugsPage,
+    changelog: ChangelogPage,
     settings: SettingsPage
   }[effectivePage] || DashboardPage;
 
@@ -313,6 +349,44 @@ export default function App() {
           />
         </div>
       </main>
+      {popups.length > 0 && (
+        <BroadcastPopup
+          broadcast={popups[0]}
+          onDismiss={() => setPopups((current) => current.slice(1))}
+        />
+      )}
+    </div>
+  );
+}
+
+function BroadcastPopup({ broadcast, onDismiss }) {
+  const media = (broadcast.assets || []).filter((asset) => ["image", "video", "audio"].includes(asset.kind));
+  const files = (broadcast.assets || []).filter((asset) => asset.kind === "file");
+  return (
+    <div className="modal-scrim broadcast-scrim">
+      <div className="modal broadcast-popup" onClick={(clickEvent) => clickEvent.stopPropagation()}>
+        <div className="broadcast-head">
+          <span className="broadcast-badge"><Megaphone size={13} /> ALLEY STAFF</span>
+          <h2>{broadcast.title || "Message from the Alley staff"}</h2>
+          <span className="broadcast-byline">{broadcast.createdByName} | {api.formatDate(broadcast.createdAt)}</span>
+        </div>
+        {broadcast.body && <MarkdownView text={broadcast.body} />}
+        {media.length > 0 && (
+          <div className="broadcast-media">
+            {media.map((asset) => <BroadcastMedia key={asset.id} asset={asset} />)}
+          </div>
+        )}
+        {files.length > 0 && (
+          <div className="broadcast-files">
+            {files.map((asset) => (
+              <button key={asset.id} className="ghost" onClick={() => api.alleyDownload(`/api/broadcasts/assets/${asset.id}`, asset.name)}>
+                <Download size={14} /><strong>{asset.name}</strong><small>{api.formatBytes(asset.size)}</small>
+              </button>
+            ))}
+          </div>
+        )}
+        <div className="actions"><button className="primary" onClick={onDismiss}>Got it</button></div>
+      </div>
     </div>
   );
 }

@@ -14,6 +14,10 @@ export const alleyLogout = () => api.alleyLogout();
 export const alley = (path, options) => api.alleyRequest(path, options);
 export const alleyDownload = (path, defaultName) => api.alleyDownload(path, defaultName);
 
+// github (public repo)
+export const githubReleases = () => api.githubReleases();
+export const githubIssues = () => api.githubIssues();
+
 const imageCache = new Map();
 
 /** Fetches an auth-protected alley image and returns an object URL (cached). */
@@ -31,6 +35,8 @@ export async function alleyImageUrl(pathOrUrl) {
 
 export const openImageDialog = (opts) => api.openImageDialog(opts);
 export const openSharedFiles = () => api.openSharedFiles();
+export const openSharedFolder = () => api.openSharedFolder();
+export const broadcastUploadAssets = () => api.broadcastUploadAssets();
 export const saveFileDialog = (opts) => api.saveFileDialog(opts);
 export const pickFolder = () => api.pickFolder();
 export const writeFile = (path, dataBase64) => api.writeFile(path, dataBase64);
