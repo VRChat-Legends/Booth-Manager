@@ -1,0 +1,40 @@
+name: Feature request
+description: Suggest an idea or improvement for Booth Manager
+title: "[Feature] "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the suggestion. Keep in mind that booth uploads, events, and permissions are controlled by the Legends Alley service, so some ideas may belong to the website or the Unity SDK instead of this app.
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem would this solve?
+      description: Describe the situation where the app falls short today.
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: What would you like to happen?
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Workarounds or alternatives
+      description: How do you handle this today, if at all?
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Team Chat
+        - File sharing (peer attachments)
+        - Booth Backups
+        - Community management
+        - Standee Studio
+        - Booth Builder
+        - Settings / general
+        - Other

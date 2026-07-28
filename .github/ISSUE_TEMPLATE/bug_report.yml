@@ -1,0 +1,66 @@
+name: Bug report
+description: Something in Booth Manager is broken or behaving unexpectedly
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. Open bugs appear inside the app on the Bug Tracker page, so a clear, specific title helps everyone.
+  - type: input
+    id: app-version
+    attributes:
+      label: App version
+      description: Shown at the bottom of the Settings page, for example "Booth Manager v2.1.2".
+      placeholder: "2.1.2"
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      description: Which part of the app is affected?
+      options:
+        - Sign in / authentication
+        - Dashboard
+        - Team Chat
+        - File sharing (peer attachments)
+        - Booth Backups
+        - Community management
+        - Alley Admin (staff)
+        - Standee Studio
+        - Updater or installer
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What did you see? Include the exact error text if there was any.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open Team Chat
+        2. Attach a file
+        3. ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect to happen?
+  - type: input
+    id: windows-version
+    attributes:
+      label: Windows version
+      placeholder: "Windows 11 24H2"
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else?
+      description: Screenshots, whether it happens every time, network details for file transfer problems, and so on.
