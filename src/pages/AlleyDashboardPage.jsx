@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Download } from "lucide-react";
 import * as api from "../lib/api.js";
 import * as audio from "../lib/audio.js";
+import { ImageDropWell } from "../components/dropZone.jsx";
 
 export default function AlleyDashboardPage({ cfg, refreshConfig }) {
   const [me, setMe] = useState(null);
@@ -68,10 +69,12 @@ export default function AlleyDashboardPage({ cfg, refreshConfig }) {
               </div>
             ))}
           </div>
-          {tab === "overview" && <Overview me={me} />}
-          {tab === "profile" && <Profile me={me} reload={load} />}
-          {tab === "team" && <Team me={me} reload={load} />}
-          {tab === "booths" && <MyBooths />}
+          <div className="tab-panel" key={tab}>
+            {tab === "overview" && <Overview me={me} />}
+            {tab === "profile" && <Profile me={me} reload={load} />}
+            {tab === "team" && <Team me={me} reload={load} />}
+            {tab === "booths" && <MyBooths />}
+          </div>
         </>
       )}
     </div>
@@ -183,7 +186,11 @@ function Profile({ me, reload }) {
   const uploadLogo = async () => {
     const pick = await api.openImageDialog({});
     if (!pick.ok) return;
-    const f = pick.files[0];
+    await sendLogo(pick.files[0]);
+  };
+
+  const sendLogo = async (f) => {
+    if (!f) return;
     if (f.dataBase64.length * 0.75 > 2 * 1024 * 1024) {
       setMsg({ ok: false, t: "Logo must be 2 MB or smaller." });
       return;
@@ -213,7 +220,9 @@ function Profile({ me, reload }) {
       </label>
       <div className="row">
         <button className="primary" onClick={save} disabled={busy || !canEdit}>Save profile</button>
-        <button onClick={uploadLogo} disabled={busy || !canEdit}>Upload logo...</button>
+        <ImageDropWell onImageFile={sendLogo} onError={(dropError) => setMsg({ ok: false, t: dropError })} disabled={busy || !canEdit}>
+          <button onClick={uploadLogo} disabled={busy || !canEdit}>Upload logo...</button>
+        </ImageDropWell>
         {msg && <span className={msg.ok ? "teal small" : "danger-text small"}>{msg.t}</span>}
       </div>
     </div>

@@ -17,6 +17,11 @@ export const alleyDownload = (path, defaultName) => api.alleyDownload(path, defa
 // github (public repo)
 export const githubReleases = () => api.githubReleases();
 export const githubIssues = () => api.githubIssues();
+export const githubSdkReleases = () => api.githubSdkReleases();
+export const githubSdkReadme = () => api.githubSdkReadme();
+
+// native notifications (respects the Settings toggle in the main process)
+export const notifyNative = (payload) => api.notifyNative(payload);
 
 const imageCache = new Map();
 
@@ -36,6 +41,9 @@ export async function alleyImageUrl(pathOrUrl) {
 export const openImageDialog = (opts) => api.openImageDialog(opts);
 export const openSharedFiles = () => api.openSharedFiles();
 export const openSharedFolder = () => api.openSharedFolder();
+export const pathForFile = (file) => api.pathForFile(file);
+export const addSharedPaths = (paths) => api.addSharedPaths(paths);
+export const readImageFile = (path) => api.readImageFile(path);
 export const broadcastUploadAssets = () => api.broadcastUploadAssets();
 export const saveFileDialog = (opts) => api.saveFileDialog(opts);
 export const pickFolder = () => api.pickFolder();

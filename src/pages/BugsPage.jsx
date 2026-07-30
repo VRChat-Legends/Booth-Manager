@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { Bug, CircleCheck, CircleDot, ExternalLink } from "lucide-react";
 import * as api from "../lib/api.js";
+import { requestSupportCompose } from "./SupportPage.jsx";
 
 const NEW_ISSUE_URL = "https://github.com/VRChat-Legends/Booth-Manager/issues/new";
 
-export default function BugsPage() {
+export default function BugsPage({ goTo }) {
   const [issues, setIssues] = useState(null);
   const [error, setError] = useState("");
   const [filter, setFilter] = useState("open");
@@ -16,6 +17,11 @@ export default function BugsPage() {
       else setError(r.error || "Could not load issues from GitHub.");
     });
   }, []);
+
+  const reportBug = () => {
+    requestSupportCompose({ type: "bug", context: "Bug Tracker" });
+    goTo?.("support");
+  };
 
   const shown = useMemo(() => {
     const list = issues || [];
@@ -31,8 +37,11 @@ export default function BugsPage() {
           <h1>Bug Tracker</h1>
           <div className="sub">Known issues and fixes, synced from GitHub</div>
         </div>
-        <button className="primary small" onClick={() => api.openExternal(NEW_ISSUE_URL)}>
+        <button className="primary small" onClick={reportBug} title="Opens a support ticket with the bug report form">
           <Bug size={14} /> Report a bug
+        </button>
+        <button className="ghost small" onClick={() => api.openExternal(NEW_ISSUE_URL)} title="For confirmed bugs the staff file GitHub issues; you can too if you have an account">
+          <ExternalLink size={14} /> GitHub
         </button>
       </div>
 

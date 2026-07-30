@@ -25,6 +25,7 @@ const DEFAULTS = {
   // preferences
   sfxEnabled: true,
   pingSoundEnabled: true,
+  nativeNotificationsEnabled: true,
   runInTray: true,
   startWithWindows: false
 };

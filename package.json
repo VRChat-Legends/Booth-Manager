@@ -1,6 +1,6 @@
 {
   "name": "booth-manager",
-  "version": "2.1.2",
+  "version": "2.3.0",
   "description": "Legends Alley community chat, booth backup, and event companion",
   "author": "VRChat Legends",
   "productName": "Booth Manager",
@@ -16,6 +16,7 @@
     "@comfyorg/fbx-exporter-three": "^1.0.1",
     "electron-updater": "^6.8.3",
     "lucide-react": "^0.468.0",
+    "qrcode": "^1.5.4",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "three": "^0.180.0"

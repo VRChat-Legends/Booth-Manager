@@ -1,4 +1,4 @@
-const { contextBridge, ipcRenderer } = require("electron");
+const { contextBridge, ipcRenderer, webUtils } = require("electron");
 
 contextBridge.exposeInMainWorld("boothApi", {
   // config
@@ -15,14 +15,25 @@ contextBridge.exposeInMainWorld("boothApi", {
   alleyDownload: (path, defaultName) => ipcRenderer.invoke("alley:download", path, defaultName),
   alleyImage: (pathOrUrl) => ipcRenderer.invoke("alley:image", pathOrUrl),
 
-  // github (changelog + bug tracker)
+  // github (changelog + bug tracker + sdk page)
   githubReleases: () => ipcRenderer.invoke("github:releases"),
   githubIssues: () => ipcRenderer.invoke("github:issues"),
+  githubSdkReleases: () => ipcRenderer.invoke("github:sdkReleases"),
+  githubSdkReadme: () => ipcRenderer.invoke("github:sdkReadme"),
+
+  // native notifications
+  notifyNative: (payload) => ipcRenderer.invoke("notify:show", payload),
 
   // dialogs + files
   openImageDialog: (opts) => ipcRenderer.invoke("dialog:openImage", opts),
   openSharedFiles: () => ipcRenderer.invoke("dialog:openSharedFiles"),
   openSharedFolder: () => ipcRenderer.invoke("dialog:openSharedFolder"),
+  // drag and drop: File -> absolute path (Electron removed File.path)
+  pathForFile: (file) => {
+    try { return webUtils.getPathForFile(file); } catch { return ""; }
+  },
+  addSharedPaths: (paths) => ipcRenderer.invoke("shares:addPaths", paths),
+  readImageFile: (path) => ipcRenderer.invoke("file:readImage", path),
   broadcastUploadAssets: () => ipcRenderer.invoke("alley:broadcastAssets"),
   saveFileDialog: (opts) => ipcRenderer.invoke("dialog:saveFile", opts),
   pickFolder: () => ipcRenderer.invoke("dialog:pickFolder"),

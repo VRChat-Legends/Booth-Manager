@@ -4,12 +4,16 @@ import {
   Boxes,
   Bug,
   Building2,
+  Combine,
   Download,
   LayoutDashboard,
   LifeBuoy,
   LockKeyhole,
   Megaphone,
   MessageSquareText,
+  Package,
+  Palette,
+  QrCode,
   ScrollText,
   Settings,
   ShieldCheck,
@@ -30,6 +34,9 @@ import SettingsPage from "./pages/SettingsPage.jsx";
 import TeamChatPage from "./pages/TeamChatPage.jsx";
 import ChangelogPage from "./pages/ChangelogPage.jsx";
 import BugsPage from "./pages/BugsPage.jsx";
+import SupportPage from "./pages/SupportPage.jsx";
+import UnitySdkPage from "./pages/UnitySdkPage.jsx";
+import QrPage from "./pages/QrPage.jsx";
 import logoUrl from "../assets/app-icon.png";
 
 const NAV = [
@@ -43,8 +50,26 @@ const NAV = [
   { section: "Tools" },
   { id: "builder", label: "Booth Builder", Icon: Box, badge: "Soon", disabled: true },
   { id: "standee", label: "Standee Studio", Icon: Sparkles },
+  { id: "unitySdk", label: "Unity SDK", Icon: Package },
+  { id: "qr", label: "QR Codes", Icon: QrCode },
+  {
+    id: "atlas",
+    label: "Texture Atlas",
+    Icon: Combine,
+    badge: "Soon",
+    disabled: true,
+    tooltip: "Coming soon: upload a 3D model with its textures and get back a single combined texture atlas, with an optional toggle to compress everything into one mesh"
+  },
+  {
+    id: "promo",
+    label: "Promo Studio",
+    Icon: Palette,
+    badge: "Soon",
+    disabled: true,
+    tooltip: "Coming soon: banners, social posts, and invite graphics generated from your community branding"
+  },
   { section: "Resources" },
-  { id: "support", label: "Support", Icon: LifeBuoy, badge: "Soon", disabled: true },
+  { id: "support", label: "Support", Icon: LifeBuoy },
   { id: "bugs", label: "Bug Tracker", Icon: Bug },
   { id: "changelog", label: "Change Log", Icon: ScrollText }
 ];
@@ -56,10 +81,28 @@ const TITLES = {
   alleyDashboard: "Community",
   alleyAdmin: "Alley Admin",
   standee: "Standee Studio",
+  unitySdk: "Unity SDK",
+  qr: "QR Codes",
+  support: "Support",
   bugs: "Bug Tracker",
   changelog: "Change Log",
   settings: "Settings"
 };
+
+/** First line or so of a popup's markdown as plain text for the native
+ * notification body (strips headings, emphasis, links, images, quotes). */
+function plainTextSnippet(markdown, max = 160) {
+  const text = String(markdown || "")
+    .replace(/```[\s\S]*?```/g, " ")
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, " ")
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
+    .replace(/^#{1,3}\s+/gm, "")
+    .replace(/^>\s?/gm, "")
+    .replace(/[*_`]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  return text.length > max ? `${text.slice(0, max - 3)}...` : text;
+}
 
 export default function App() {
   const [cfg, setCfg] = useState(null);
@@ -67,12 +110,15 @@ export default function App() {
   const [checking, setChecking] = useState(true);
   const [loginError, setLoginError] = useState("");
   const [event, setEvent] = useState(null);
+  const [platformLock, setPlatformLock] = useState(false);
   const [newUploads, setNewUploads] = useState([]);
   const [update, setUpdate] = useState(null);
   const [updateDismissed, setUpdateDismissed] = useState(false);
   const [popups, setPopups] = useState([]);
+  const [ticketAttention, setTicketAttention] = useState(0);
   const sessionStartRef = useRef(new Date().toISOString());
   const seenBroadcastsRef = useRef(new Set());
+  const ticketSeenRef = useRef({ byId: new Map(), primed: false });
 
   const refreshConfig = useCallback(async () => {
     const next = await api.getConfig();
@@ -102,20 +148,31 @@ export default function App() {
       if (pointerEvent.target.closest("button, .navitem, .tab, .clickable")) audio.click();
     };
     window.addEventListener("pointerdown", onClick, true);
+    // stray drops outside a drop zone must never navigate the window to file://
+    const swallowDrag = (dragEvent) => dragEvent.preventDefault();
+    window.addEventListener("dragover", swallowDrag);
+    window.addEventListener("drop", swallowDrag);
     return () => {
       disposed = true;
       off?.();
       window.removeEventListener("pointerdown", onClick, true);
+      window.removeEventListener("dragover", swallowDrag);
+      window.removeEventListener("drop", swallowDrag);
     };
   }, [refreshConfig]);
 
   useEffect(() => {
     if (!cfg?.alleyToken) {
       setEvent(null);
+      setPlatformLock(false);
       return undefined;
     }
     let disposed = false;
     const load = async () => {
+      // manual staff lock applies even when no event is live
+      api.alley("/api/public/app-status").then((status) => {
+        if (!disposed && status.status === 200) setPlatformLock(status.data?.appLocked === true);
+      });
       let result = await api.alley("/api/events/current");
       if (result.status === 200) {
         if (!disposed && result.data?.event) setEvent(result.data.event);
@@ -178,7 +235,7 @@ export default function App() {
 
   const loggedIn = Boolean(cfg?.alleyToken);
   const isStaff = cfg?.alleyStaff === true;
-  const appLocked = event?.appLocked === true && !isStaff;
+  const appLocked = (event?.appLocked === true || platformLock) && !isStaff;
   const effectivePage = appLocked && page !== "settings" ? "booths" : page;
 
   const visibleNav = useMemo(
@@ -205,39 +262,121 @@ export default function App() {
     await refreshConfig();
   }, [refreshConfig]);
 
-  // Staff popups plus the access watchdog: this poll runs against the strict
+  // Staff popups plus the access watchdog: this loop runs against the strict
   // membership middleware, so a removed team member or a deactivated
   // community turns into a 401/403 here and signs the app out.
+  //
+  // Delivery is a long-poll: the service holds /api/broadcasts/wait for up
+  // to ~25s and resolves the moment staff hit send, so popups (and their
+  // native notifications) land within a second instead of on a poll cycle.
+  // Older service builds without /wait fall back to the 45s flat poll.
   useEffect(() => {
     if (!cfg?.alleyToken) return undefined;
     let disposed = false;
-    const poll = async () => {
-      const result = await api.alley(`/api/broadcasts?since=${encodeURIComponent(sessionStartRef.current)}`);
-      if (disposed) return;
+    let fallbackTimer = 0;
+    let longPollSupported = true;
+    // advances past everything already delivered so a resolved long-poll
+    // does not re-return the same broadcasts in a tight loop
+    let since = sessionStartRef.current;
+
+    const deliver = (broadcasts) => {
+      const seen = seenBroadcastsRef.current;
+      const sessionStart = Date.parse(sessionStartRef.current);
+      for (const broadcast of broadcasts || []) {
+        if (Date.parse(broadcast.createdAt) > Date.parse(since)) since = broadcast.createdAt;
+      }
+      const fresh = (broadcasts || []).filter((broadcast) =>
+        !seen.has(broadcast.id) && Date.parse(broadcast.createdAt) >= sessionStart);
+      for (const broadcast of fresh) seen.add(broadcast.id);
+      if (!fresh.length) return;
+      audio.ping();
+      setPopups((current) => [...current, ...fresh]);
+      // Native notification when the window is hidden (tray), minimized, or
+      // unfocused; skipped when the user is looking at the in-app popup.
+      if (document.hidden || !document.hasFocus()) {
+        for (const broadcast of fresh) {
+          api.notifyNative({
+            title: broadcast.createdByName || "Alley Staff",
+            body: plainTextSnippet(broadcast.body) || broadcast.title || "New staff popup"
+          });
+        }
+      }
+    };
+
+    const handle = async (result) => {
+      if (disposed) return false;
       if (result.status === 401 || result.status === 403) {
         setLoginError(result.error || "Your Legends Alley access changed. Sign in again.");
         setPopups([]);
         await logout();
-        return;
+        return false;
       }
-      if (result.status !== 200) return;
-      const seen = seenBroadcastsRef.current;
-      const sessionStart = Date.parse(sessionStartRef.current);
-      const fresh = (result.data?.broadcasts || []).filter((broadcast) =>
-        !seen.has(broadcast.id) && Date.parse(broadcast.createdAt) >= sessionStart);
-      for (const broadcast of fresh) seen.add(broadcast.id);
-      if (fresh.length) {
-        audio.ping();
-        setPopups((current) => [...current, ...fresh]);
+      if (result.status === 404) longPollSupported = false;
+      if (result.status === 200) deliver(result.data?.broadcasts);
+      return true;
+    };
+
+    const loop = async () => {
+      while (!disposed && longPollSupported) {
+        const result = await api.alley(`/api/broadcasts/wait?since=${encodeURIComponent(since)}`);
+        if (!(await handle(result))) return;
+        // network hiccup or unsupported: breathe before the next cycle
+        if (result.status !== 200) await new Promise((resolve) => setTimeout(resolve, 5000));
       }
+      if (disposed) return;
+      const poll = async () => {
+        const result = await api.alley(`/api/broadcasts?since=${encodeURIComponent(since)}`);
+        await handle(result);
+      };
+      poll();
+      fallbackTimer = window.setInterval(poll, 45_000);
+    };
+    loop();
+
+    return () => {
+      disposed = true;
+      window.clearInterval(fallbackTimer);
+    };
+  }, [cfg?.alleyToken, logout]);
+
+  // Ticket activity: same ping language as chat mentions plus a nav badge.
+  // Users hear about staff replies; staff hear about tickets entering the
+  // needs-reply queue.
+  useEffect(() => {
+    if (!cfg?.alleyToken) {
+      setTicketAttention(0);
+      return undefined;
+    }
+    ticketSeenRef.current = { byId: new Map(), primed: false };
+    let disposed = false;
+    const poll = async () => {
+      const result = isStaff
+        ? await api.alley("/api/tickets?status=awaiting_staff")
+        : await api.alley("/api/tickets/mine");
+      if (disposed || result.status !== 200) return;
+      const list = result.data?.tickets || [];
+      const relevant = isStaff
+        ? list
+        : list.filter((ticket) => ticket.status === "awaiting_user");
+      setTicketAttention(isStaff ? (result.data?.counts?.awaitingStaff ?? relevant.length) : relevant.length);
+      const seen = ticketSeenRef.current;
+      if (seen.primed) {
+        const hasNews = relevant.some((ticket) => {
+          const last = seen.byId.get(ticket.id);
+          return !last || Date.parse(ticket.lastMessageAt || ticket.updatedAt) > last;
+        });
+        if (hasNews) audio.ping();
+      }
+      seen.byId = new Map(relevant.map((ticket) => [ticket.id, Date.parse(ticket.lastMessageAt || ticket.updatedAt)]));
+      seen.primed = true;
     };
     poll();
-    const timer = window.setInterval(poll, 45_000);
+    const timer = window.setInterval(poll, 60_000);
     return () => {
       disposed = true;
       window.clearInterval(timer);
     };
-  }, [cfg?.alleyToken, logout]);
+  }, [cfg?.alleyToken, isStaff]);
 
   const acknowledgeUploads = useCallback(async () => {
     if (!newUploads.length) return;
@@ -260,6 +399,9 @@ export default function App() {
     alleyDashboard: AlleyDashboardPage,
     alleyAdmin: AlleyAdminPage,
     standee: StandeePage,
+    unitySdk: UnitySdkPage,
+    qr: QrPage,
+    support: SupportPage,
     bugs: BugsPage,
     changelog: ChangelogPage,
     settings: SettingsPage
@@ -280,11 +422,12 @@ export default function App() {
             key={item.id}
             className={`navitem${effectivePage === item.id ? " active" : ""}`}
             disabled={item.disabled || (appLocked && item.id !== "booths")}
-            title={item.disabled ? "Coming soon" : appLocked && item.id !== "booths" ? "Backup-only mode is active" : ""}
+            title={item.disabled ? (item.tooltip || "Coming soon") : appLocked && item.id !== "booths" ? "Backup-only mode is active" : ""}
             onClick={() => !item.disabled && setPage(item.id)}
           >
             <item.Icon className="ico" size={17} strokeWidth={1.8} />
             <span>{item.label}</span>
+            {item.id === "support" && ticketAttention > 0 && <span className="nav-badge attention">{ticketAttention}</span>}
             {item.badge && <span className="nav-badge">{item.badge}</span>}
           </button>
         ))}
@@ -302,7 +445,7 @@ export default function App() {
         {update && !updateDismissed && ["available", "downloading", "downloaded"].includes(update.status) && (
           <UpdateBanner update={update} onDismiss={() => setUpdateDismissed(true)} />
         )}
-        {appLocked && <LockBanner event={event} />}
+        {appLocked && <LockBanner event={event} manual={platformLock && event?.appLocked !== true} />}
         {newUploads.length > 0 && (
           <div className="new-upload-banner">
             <UploadCloud size={18} />
@@ -401,13 +544,15 @@ function BroadcastPopup({ broadcast, onDismiss }) {
   );
 }
 
-function LockBanner({ event }) {
+function LockBanner({ event, manual }) {
   return (
     <div className="lock-banner">
       <LockKeyhole size={17} />
       <div>
         <strong>Backup-only mode is active</strong>
-        <span>{event?.name || "The event"} begins within five days. Editing and collaboration tools are locked to protect the final event build; retained booth ZIP downloads remain available.</span>
+        <span>{manual
+          ? "Alley staff temporarily locked the app. Editing and collaboration tools are paused; retained booth ZIP downloads remain available."
+          : `${event?.name || "The event"} begins within five days. Editing and collaboration tools are locked to protect the final event build; retained booth ZIP downloads remain available.`}</span>
       </div>
     </div>
   );

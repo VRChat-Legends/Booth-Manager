@@ -45,13 +45,17 @@ class PeerFileService {
     this.identity = null;
     this.peers = new Map();
     this.transfers = new Map();
-    this.watchedAttachments = new Set();
+    // roomId -> Set of own attachment ids we heartbeat for that room; ticket
+    // rooms ride along beside the active chat room so ticket files stay
+    // servable while the uploader is anywhere in the app
+    this.watchedByRoom = new Map();
     this.listeners = new Set();
     this.pollTimer = 0;
     this.heartbeatTimer = 0;
     this.polling = false;
     this.heartbeating = false;
     this.lastHeartbeatAt = 0;
+    this.extraPollIndex = 0;
   }
 
   start(identity) {
@@ -83,7 +87,7 @@ class PeerFileService {
     this.heartbeatTimer = 0;
     for (const peer of this.peers.values()) this.closePeer(peer);
     this.peers.clear();
-    this.watchedAttachments.clear();
+    this.watchedByRoom.clear();
     this.transfers.clear();
     this.lastHeartbeatAt = 0;
     this.identity = null;
@@ -96,7 +100,11 @@ class PeerFileService {
     if (this.identity.communityId === next) return;
     for (const peer of this.peers.values()) this.closePeer(peer);
     this.peers.clear();
-    this.watchedAttachments.clear();
+    // ticket-room watches survive room switches so those shares stay alive;
+    // the outgoing chat room's watch entry is rebuilt when we return to it
+    for (const roomId of [...this.watchedByRoom.keys()]) {
+      if (!roomId.startsWith("ticket-")) this.watchedByRoom.delete(roomId);
+    }
     this.transfers.clear();
     this.lastHeartbeatAt = 0;
     this.identity = { ...this.identity, communityId: next };
@@ -126,17 +134,13 @@ class PeerFileService {
     this.emit();
   }
 
-  roomSuffix() {
-    if (!this.identity?.communityId) return "";
-    return `?communityId=${encodeURIComponent(this.identity.communityId)}`;
-  }
-
   async sendSignal(recipientId, peer, type, payload = {}) {
-    if (!this.identity?.communityId) return;
+    const roomId = peer.roomId || this.identity?.communityId;
+    if (!roomId) return;
     await api.alley("/api/chat/signals", {
       method: "POST",
       json: {
-        communityId: this.identity.communityId,
+        communityId: roomId,
         recipientId: String(recipientId),
         sessionId: peer.sessionId,
         attachmentId: peer.attachmentId,
@@ -146,12 +150,13 @@ class PeerFileService {
     });
   }
 
-  createPeer({ id, attachmentId, remoteId, direction }) {
+  createPeer({ id, attachmentId, remoteId, direction, roomId }) {
     const pc = new RTCPeerConnection(ICE_CONFIG);
     const peer = {
       sessionId: id,
       attachmentId: String(attachmentId),
       remoteId: String(remoteId),
+      roomId: String(roomId || this.identity?.communityId || ""),
       direction,
       pc,
       channel: null,
@@ -223,7 +228,7 @@ class PeerFileService {
     const existing = this.transfers.get(attachment.id);
     if (["requesting", "connecting", "transferring"].includes(existing?.status)) return;
     const id = sessionId();
-    const peer = this.createPeer({ id, attachmentId: attachment.id, remoteId: attachment.authorId, direction: "download" });
+    const peer = this.createPeer({ id, attachmentId: attachment.id, remoteId: attachment.authorId, direction: "download", roomId: this.identity.communityId });
     const channel = peer.pc.createDataChannel("attachment", { ordered: true });
     this.configureDownloadChannel(peer, channel, attachment);
     this.setTransfer(attachment.id, { status: "requesting", progress: 0, error: "", sessionId: id, name: attachment.name });
@@ -297,15 +302,15 @@ class PeerFileService {
     this.setTransfer(peer.attachmentId, { status: "transferring", progress });
   }
 
-  async acceptOffer(signal) {
+  async acceptOffer(signal, roomId) {
     const local = await api.getLocalShareStatus(signal.attachmentId);
     if (!local.available) {
-      const tempPeer = { sessionId: signal.sessionId, attachmentId: signal.attachmentId };
+      const tempPeer = { sessionId: signal.sessionId, attachmentId: signal.attachmentId, roomId };
       await this.sendSignal(signal.senderId, tempPeer, "unavailable", {});
-      if (this.identity?.communityId) {
+      if (roomId) {
         await api.alley(`/api/chat/attachments/${encodeURIComponent(signal.attachmentId)}/status`, {
           method: "POST",
-          json: { communityId: this.identity.communityId, available: false }
+          json: { communityId: roomId, available: false }
         });
       }
       return;
@@ -315,7 +320,8 @@ class PeerFileService {
       id: signal.sessionId,
       attachmentId: signal.attachmentId,
       remoteId: signal.senderId,
-      direction: "upload"
+      direction: "upload",
+      roomId
     });
     peer.pc.ondatachannel = (event) => this.configureUploadChannel(peer, event.channel, local);
     await peer.pc.setRemoteDescription(signal.payload.description);
@@ -354,9 +360,9 @@ class PeerFileService {
     window.setTimeout(() => this.closePeer(peer), 1500);
   }
 
-  async handleSignal(signal) {
+  async handleSignal(signal, roomId) {
     if (signal.type === "offer") {
-      await this.acceptOffer(signal);
+      await this.acceptOffer(signal, roomId);
       return;
     }
     const peer = this.peers.get(signal.sessionId);
@@ -372,34 +378,61 @@ class PeerFileService {
     }
   }
 
+  /** Rooms beyond the active chat room whose signals we answer: ticket
+   * threads where this user has shared files. */
+  extraSignalRooms() {
+    const active = this.identity?.communityId || "";
+    return [...this.watchedByRoom.keys()].filter((roomId) => roomId.startsWith("ticket-") && roomId !== active);
+  }
+
+  async pollRoomSignals(roomId) {
+    const result = await api.alley(`/api/chat/signals?communityId=${encodeURIComponent(roomId)}`);
+    if (result.status !== 200) return;
+    for (const signal of result.data?.signals || []) {
+      try {
+        await this.handleSignal(signal, roomId);
+      } catch (error) {
+        const peer = this.peers.get(signal.sessionId);
+        if (peer) this.failPeer(peer, error.message || error);
+      }
+    }
+  }
+
   async pollSignals() {
-    if (this.polling || !this.identity?.communityId) return;
+    if (this.polling || !this.identity) return;
     this.polling = true;
     try {
-      const result = await api.alley(`/api/chat/signals${this.roomSuffix()}`);
-      if (result.status === 200) {
-        for (const signal of result.data?.signals || []) {
-          try {
-            await this.handleSignal(signal);
-          } catch (error) {
-            const peer = this.peers.get(signal.sessionId);
-            if (peer) this.failPeer(peer, error.message || error);
-          }
-        }
+      if (this.identity.communityId) await this.pollRoomSignals(this.identity.communityId);
+      // round-robin one ticket room per cycle so held offers still reach us
+      // without multiplying the poll rate by the number of rooms
+      const extras = this.extraSignalRooms();
+      if (extras.length) {
+        this.extraPollIndex = (this.extraPollIndex + 1) % extras.length;
+        await this.pollRoomSignals(extras[this.extraPollIndex]);
       }
     } finally {
       this.polling = false;
     }
   }
 
-  watchAttachments(attachments) {
+  watchAttachments(attachments, roomId) {
     if (!this.identity?.userId) return;
+    const targetRoom = String(roomId || this.identity.communityId || "");
+    if (!targetRoom) return;
+    let watched = this.watchedByRoom.get(targetRoom);
     for (const attachment of attachments || []) {
       if (String(attachment.authorId) !== this.identity.userId) continue;
-      this.watchedAttachments.add(String(attachment.id));
+      if (!watched) {
+        watched = new Set();
+        this.watchedByRoom.set(targetRoom, watched);
+      }
+      watched.add(String(attachment.id));
       // folder entries heartbeat individually so per-file availability stays live
-      for (const entry of attachment.entries || []) this.watchedAttachments.add(String(entry.id));
+      for (const entry of attachment.entries || []) watched.add(String(entry.id));
     }
+    // bound the side-channel work: keep at most the 6 most recent ticket rooms
+    const ticketRooms = [...this.watchedByRoom.keys()].filter((key) => key.startsWith("ticket-"));
+    while (ticketRooms.length > 6) this.watchedByRoom.delete(ticketRooms.shift());
     this.heartbeat();
   }
 
@@ -411,27 +444,25 @@ class PeerFileService {
   }
 
   async heartbeat() {
-    if (this.heartbeating || !this.identity?.communityId || !this.watchedAttachments.size) return;
+    if (this.heartbeating || !this.identity) return;
+    const rooms = [...this.watchedByRoom.entries()].filter(([, ids]) => ids.size);
+    if (!rooms.length) return;
     if (Date.now() - this.lastHeartbeatAt < HEARTBEAT_MS - 1000) return;
-    const communityId = this.identity.communityId;
-    const watched = [...this.watchedAttachments];
     this.heartbeating = true;
     this.lastHeartbeatAt = Date.now();
     try {
       const local = new Map((await api.listLocalShares()).map((item) => [String(item.id), item]));
-      await api.alley("/api/chat/attachments/status", {
-        method: "POST",
-        json: {
-          communityId,
-          attachments: watched.map((id) => ({ id, available: local.get(id)?.available === true }))
-        }
-      });
+      for (const [roomId, ids] of rooms) {
+        await api.alley("/api/chat/attachments/status", {
+          method: "POST",
+          json: {
+            communityId: roomId,
+            attachments: [...ids].map((id) => ({ id, available: local.get(id)?.available === true }))
+          }
+        });
+      }
     } finally {
       this.heartbeating = false;
-      if (this.identity?.communityId && this.identity.communityId !== communityId) {
-        this.lastHeartbeatAt = 0;
-        this.heartbeat();
-      }
     }
   }
 

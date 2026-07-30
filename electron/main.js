@@ -5,7 +5,7 @@ const fs = require("fs");
 const { Readable } = require("stream");
 const { pipeline } = require("stream/promises");
 const { spawn } = require("child_process");
-const { app, BrowserWindow, Menu, Tray, dialog, ipcMain, shell, protocol, session } = require("electron");
+const { app, BrowserWindow, Menu, Notification, Tray, dialog, ipcMain, shell, protocol, session } = require("electron");
 const { readConfig, writeConfig } = require("./configStore");
 const shareStore = require("./shareStore");
 const auth = require("./auth");
@@ -146,7 +146,16 @@ ipcMain.handle("config:save", (_e, patch) => {
 ipcMain.handle("app:version", () => app.getVersion());
 ipcMain.handle("app:openExternal", async (_e, url) => {
   const s = String(url || "");
-  if (/^https?:\/\//i.test(s)) await shell.openExternal(s);
+  if (/^https?:\/\//i.test(s)) {
+    await shell.openExternal(s);
+    return;
+  }
+  // the only non-http scheme allowed: the Creator Companion deep link, and
+  // only when it points at our own VPM listing
+  if (/^vcc:\/\/vpm\/addRepo\?url=/i.test(s)) {
+    const repo = decodeURIComponent(s.slice(s.indexOf("url=") + 4));
+    if (/^https:\/\/vrchatlegends\.com\//i.test(repo)) await shell.openExternal(s);
+  }
 });
 
 // ------------------------------------------------------------------
@@ -284,29 +293,57 @@ ipcMain.handle("alley:image", async (_e, pathOrUrl) => {
 const GITHUB_REPO = "VRChat-Legends/Booth-Manager";
 const GITHUB_RELEASES_PATH = `/repos/${GITHUB_REPO}/releases?per_page=20`;
 const GITHUB_ISSUES_PATH = `/repos/${GITHUB_REPO}/issues?state=all&per_page=50`;
+const GITHUB_SDK_RELEASES_PATH = "/repos/VRChat-Legends/LegendsAlleySDK/releases?per_page=10";
+const GITHUB_SDK_README_PATH = "/repos/VRChat-Legends/LegendsAlleySDK/readme";
 const GITHUB_TTL_MS = 10 * 60 * 1000;
 const githubCache = new Map();
 const githubCacheFile = () => path.join(app.getPath("userData"), "github-cache.json");
+
+// The Alley backend keeps an authenticated, ETag-revalidated GitHub cache
+// shared by every client; direct GitHub is only the fallback so the app
+// still works against older service builds or while signed out.
+const GITHUB_BACKEND_KEYS = {
+  [GITHUB_ISSUES_PATH]: "bm-issues",
+  [GITHUB_RELEASES_PATH]: "bm-releases",
+  [GITHUB_SDK_RELEASES_PATH]: "sdk-releases",
+  [GITHUB_SDK_README_PATH]: "sdk-readme"
+};
 
 function readGithubDisk() {
   try { return JSON.parse(fs.readFileSync(githubCacheFile(), "utf8")); } catch { return {}; }
 }
 
+function rememberGithub(apiPath, value) {
+  const entry = { at: Date.now(), value };
+  githubCache.set(apiPath, entry);
+  try {
+    const disk = readGithubDisk();
+    disk[apiPath] = entry;
+    fs.writeFileSync(githubCacheFile(), JSON.stringify(disk));
+  } catch { /* cache write is best effort */ }
+  return value;
+}
+
+async function githubViaBackend(apiPath) {
+  const key = GITHUB_BACKEND_KEYS[apiPath];
+  const cfg = readConfig();
+  if (!key || !cfg.alleyToken) return null;
+  const res = await proxyFetch(alleyBase(), cfg.alleyToken, `/api/github/${key}`, {});
+  if (res.status !== 200 || !res.data || res.data.data === undefined || res.data.data === null) return null;
+  return { status: 200, data: res.data.data, error: "" };
+}
+
 async function githubFetch(apiPath) {
   try {
+    const viaBackend = await githubViaBackend(apiPath);
+    if (viaBackend) return rememberGithub(apiPath, viaBackend);
+    const raw = apiPath === GITHUB_SDK_README_PATH;
     const res = await fetch(`https://api.github.com${apiPath}`, {
-      headers: { "User-Agent": "BoothManager", Accept: "application/vnd.github+json" }
+      headers: { "User-Agent": "BoothManager", Accept: raw ? "application/vnd.github.raw+json" : "application/vnd.github+json" }
     });
     if (!res.ok) return { status: res.status, data: null, error: `GitHub returned HTTP ${res.status}` };
-    const value = { status: res.status, data: await res.json(), error: "" };
-    const entry = { at: Date.now(), value };
-    githubCache.set(apiPath, entry);
-    try {
-      const disk = readGithubDisk();
-      disk[apiPath] = entry;
-      fs.writeFileSync(githubCacheFile(), JSON.stringify(disk));
-    } catch { /* cache write is best effort */ }
-    return value;
+    const value = { status: res.status, data: raw ? await res.text() : await res.json(), error: "" };
+    return rememberGithub(apiPath, value);
   } catch (ex) {
     return { status: 0, data: null, error: String(ex && ex.message ? ex.message : ex) };
   }
@@ -332,6 +369,28 @@ async function githubGet(apiPath) {
 
 ipcMain.handle("github:releases", async () => githubGet(GITHUB_RELEASES_PATH));
 ipcMain.handle("github:issues", async () => githubGet(GITHUB_ISSUES_PATH));
+ipcMain.handle("github:sdkReleases", async () => githubGet(GITHUB_SDK_RELEASES_PATH));
+ipcMain.handle("github:sdkReadme", async () => githubGet(GITHUB_SDK_README_PATH));
+
+// ------------------------------------------------------------------
+// IPC: native notifications (staff popups while unfocused or in tray)
+// ------------------------------------------------------------------
+
+ipcMain.handle("notify:show", (_e, payload) => {
+  if (readConfig().nativeNotificationsEnabled === false) return { ok: false, muted: true };
+  if (!Notification.isSupported()) return { ok: false, error: "Notifications are not supported here." };
+  const title = String(payload?.title || "Booth Manager").slice(0, 120);
+  const body = String(payload?.body || "").slice(0, 240);
+  const notification = new Notification({
+    title,
+    body,
+    icon: path.join(__dirname, "..", "assets", "app-icon.ico"),
+    silent: payload?.silent === true
+  });
+  notification.on("click", () => showMainWindow());
+  notification.show();
+  return { ok: true };
+});
 
 // ------------------------------------------------------------------
 // IPC: file dialogs + disk io for standee outputs
@@ -368,6 +427,60 @@ ipcMain.handle("dialog:openSharedFolder", async () => {
   const res = await dialog.showOpenDialog(mainWindow, { properties: ["openDirectory"] });
   if (res.canceled || !res.filePaths.length) return { ok: false, canceled: true };
   return shareStore.addFolder(res.filePaths[0]);
+});
+
+// drag and drop lands here: the renderer resolves dropped File objects to
+// absolute paths (webUtils) and we run them through the same shareStore
+// validation the pickers use. Folders become folder shares like the picker.
+ipcMain.handle("shares:addPaths", (_e, paths) => {
+  const list = (Array.isArray(paths) ? paths : [])
+    .map((p) => String(p || ""))
+    .filter(Boolean)
+    .slice(0, 5);
+  if (!list.length) return { ok: false, files: [], folders: [], rejected: [] };
+  const filePaths = [];
+  const folders = [];
+  const rejected = [];
+  for (const p of list) {
+    try {
+      if (fs.statSync(p).isDirectory()) {
+        if (folders.length >= 1) {
+          rejected.push({ name: path.basename(p), error: "Only one folder per drop." });
+          continue;
+        }
+        const result = shareStore.addFolder(p);
+        if (result.ok) folders.push({ ...result.folder, entries: result.entries });
+        else rejected.push({ name: path.basename(p), error: result.error || "Folder rejected." });
+        if (result.rejected?.length) rejected.push(...result.rejected);
+      } else {
+        filePaths.push(p);
+      }
+    } catch {
+      rejected.push({ name: path.basename(p), error: "Could not read the dropped item." });
+    }
+  }
+  let files = [];
+  if (filePaths.length) {
+    const result = shareStore.addPaths(filePaths);
+    files = result.files || [];
+    if (result.rejected?.length) rejected.push(...result.rejected);
+  }
+  return { ok: files.length > 0 || folders.length > 0, files, folders, rejected };
+});
+
+// dropped image -> base64 for the logo uploaders; same shape openImageDialog
+// returns so the pages reuse their existing upload paths
+ipcMain.handle("file:readImage", (_e, filePath) => {
+  const p = String(filePath || "");
+  try {
+    const stat = fs.statSync(p);
+    if (!stat.isFile()) return { ok: false, error: "Not a file." };
+    if (!/\.(png|jpe?g|webp)$/i.test(p)) return { ok: false, error: "Use a PNG, JPEG, or WebP image." };
+    if (stat.size > 8 * 1024 * 1024) return { ok: false, error: "Images must be 8 MB or smaller." };
+    return { ok: true, files: [{ path: p, name: path.basename(p), dataBase64: fs.readFileSync(p).toString("base64") }] };
+  } catch {
+    return { ok: false, error: "Could not read the dropped image." };
+  }
 });
 
 // staff popup attachments upload straight from disk so the renderer never

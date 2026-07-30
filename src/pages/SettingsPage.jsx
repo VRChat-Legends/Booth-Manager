@@ -47,9 +47,19 @@ export default function SettingsPage({ cfg, refreshConfig, onLogout }) {
         />
         <ToggleRow
           label="Ping sound"
-          desc="Plays a chime when someone @mentions you in team chat"
+          desc="Plays a chime when someone @mentions you in team chat or replies to your support ticket"
           value={cfg.pingSoundEnabled !== false}
           onChange={(v) => toggle("pingSoundEnabled", v)}
+        />
+      </div>
+
+      <div className="card">
+        <h3>Notifications</h3>
+        <ToggleRow
+          label="Native notifications"
+          desc="Shows a Windows notification for staff popups when the app is in the tray, minimized, or unfocused. Clicking it brings the app back."
+          value={cfg.nativeNotificationsEnabled !== false}
+          onChange={(v) => toggle("nativeNotificationsEnabled", v)}
         />
       </div>
 

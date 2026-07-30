@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { File, Image, Megaphone, Music, Paperclip, Video, X } from "lucide-react";
+import { File, Image, LockKeyhole, Megaphone, MessageSquareOff, Music, Paperclip, Video, X } from "lucide-react";
 import * as api from "../lib/api.js";
 import * as audio from "../lib/audio.js";
 import { MarkdownView } from "../lib/markdown.jsx";
+import { ImageDropWell } from "../components/dropZone.jsx";
 import { AlleyBoothRow } from "./AlleyDashboardPage.jsx";
+import AdminTickets from "./AdminTicketsPage.jsx";
 
 export default function AlleyAdminPage({ cfg }) {
   const isStaff = cfg.alleyStaff === true;
@@ -11,6 +13,7 @@ export default function AlleyAdminPage({ cfg }) {
   const [tab, setTab] = useState(() => window.sessionStorage.getItem("alleyAdminTab") || "applications");
   const [error, setError] = useState("");
   const [counts, setCounts] = useState({ pending: 0, communities: 0, booths: 0 });
+  const [ticketCounts, setTicketCounts] = useState(null);
   const [composing, setComposing] = useState(false);
 
   const switchTab = (id) => {
@@ -21,16 +24,18 @@ export default function AlleyAdminPage({ cfg }) {
   useEffect(() => {
     if (!isStaff) return;
     (async () => {
-      const [apps, comms, booths] = await Promise.all([
+      const [apps, comms, booths, ticketInbox] = await Promise.all([
         api.alley("/api/admin/applications?status=pending"),
         api.alley("/api/admin/communities"),
-        api.alley("/api/admin/booths")
+        api.alley("/api/admin/booths"),
+        api.alley("/api/tickets?status=awaiting_staff")
       ]);
       setCounts({
         pending: apps.data?.applications?.length || 0,
         communities: comms.data?.communities?.length || 0,
         booths: booths.data?.booths?.length || 0
       });
+      if (ticketInbox.status === 200) setTicketCounts(ticketInbox.data?.counts || null);
     })();
   }, [isStaff, tab]);
 
@@ -59,20 +64,114 @@ export default function AlleyAdminPage({ cfg }) {
         <div className="stat"><div className="v">{counts.booths}</div><div className="l">Booth uploads</div></div>
       </div>
 
+      <PlatformControls />
+
       <div className="tabs">
-        {[["applications", "Applications"], ["communities", "Communities"], ["events", "Events"], ["booths", "Booths"]].map(([id, label]) => (
+        {[["applications", "Applications"], ["communities", "Communities"], ["events", "Events"], ["booths", "Booths"], ["tickets", "Tickets"]].map(([id, label]) => (
           <div key={id} className={`tab${tab === id ? " active" : ""}`} onClick={() => switchTab(id)}>
-            {label}{id === "applications" && counts.pending > 0 && <span className="count">{counts.pending}</span>}
+            {label}
+            {id === "applications" && counts.pending > 0 && <span className="count">{counts.pending}</span>}
+            {id === "tickets" && (ticketCounts?.awaitingStaff || 0) > 0 && <span className="count">{ticketCounts.awaitingStaff}</span>}
           </div>
         ))}
       </div>
 
-      {tab === "applications" && <Applications />}
-      {tab === "communities" && <Communities />}
-      {tab === "events" && <Events />}
-      {tab === "booths" && <StaffBooths />}
+      <div className="tab-panel" key={tab}>
+        {tab === "applications" && <Applications />}
+        {tab === "communities" && <Communities />}
+        {tab === "events" && <Events />}
+        {tab === "booths" && <StaffBooths />}
+        {tab === "tickets" && <AdminTickets cfg={cfg} onCounts={setTicketCounts} onOpenBooths={() => switchTab("booths")} />}
+      </div>
       {composing && <BroadcastComposer onClose={() => setComposing(false)} />}
     </div>
+  );
+}
+
+/* staff kill switches: the manual app lock (backup-only mode for every
+   non-staff install) and the Alley Lounge lock, both live within a minute */
+function PlatformControls() {
+  const [appLock, setAppLock] = useState(null); // { locked, lockedBy, lockedAt }
+  const [loungeLocked, setLoungeLocked] = useState(null);
+  const [busy, setBusy] = useState("");
+  const [err, setErr] = useState("");
+
+  const load = useCallback(async () => {
+    const [lock, status] = await Promise.all([
+      api.alley("/api/admin/app-lock"),
+      api.alley("/api/public/app-status")
+    ]);
+    if (lock.status === 200) setAppLock(lock.data);
+    if (status.status === 200) setLoungeLocked(status.data?.loungeLocked === true);
+  }, []);
+  useEffect(() => { load(); }, [load]);
+
+  const toggleAppLock = async () => {
+    const next = !(appLock?.locked === true);
+    setBusy("app");
+    setErr("");
+    const r = await api.alley("/api/admin/app-lock", { method: "POST", json: { locked: next } });
+    setBusy("");
+    if (r.status === 200) {
+      audio.success();
+      setAppLock((current) => ({ ...current, locked: r.data?.locked === true }));
+      load();
+    } else setErr(r.error || "The app lock did not change.");
+  };
+
+  const toggleLounge = async () => {
+    const next = !(loungeLocked === true);
+    setBusy("lounge");
+    setErr("");
+    const r = await api.alley("/api/chat/lock", { method: "POST", json: { communityId: "global", locked: next } });
+    setBusy("");
+    if (r.status === 200) {
+      audio.success();
+      setLoungeLocked(r.data?.locked === true);
+    } else setErr(r.error || "The lounge lock did not change.");
+  };
+
+  return (
+    <div className="card control-card mb16">
+      <div className="control-row">
+        <span className={`control-ico${appLock?.locked ? " hot" : ""}`}><LockKeyhole size={17} /></span>
+        <div className="grow">
+          <div className="title">Lock the app</div>
+          <div className="meta">
+            Puts every non-staff install into backup-only mode within a minute.
+            {appLock?.locked && appLock.lockedBy ? ` Locked by ${appLock.lockedBy}${appLock.lockedAt ? `, ${api.timeAgo(appLock.lockedAt)}` : ""}.` : ""}
+          </div>
+        </div>
+        {appLock?.locked && <span className="pill red">LOCKED</span>}
+        <Switch checked={appLock?.locked === true} disabled={appLock === null || busy === "app"} onChange={toggleAppLock} />
+      </div>
+      <div className="control-row">
+        <span className={`control-ico${loungeLocked ? " hot" : ""}`}><MessageSquareOff size={17} /></span>
+        <div className="grow">
+          <div className="title">Lock the Alley Lounge</div>
+          <div className="meta">Freezes the public chat room for everyone except Alley staff.</div>
+        </div>
+        {loungeLocked && <span className="pill red">LOCKED</span>}
+        <Switch checked={loungeLocked === true} disabled={loungeLocked === null || busy === "lounge"} onChange={toggleLounge} />
+      </div>
+      {err && <div className="errbox mt8">{err}</div>}
+    </div>
+  );
+}
+
+/** Animated toggle switch used across the staff console. */
+export function Switch({ checked, disabled, onChange }) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      className={`ctl-switch${checked ? " on" : ""}`}
+      disabled={disabled}
+      onClick={onChange}
+    >
+      <span className="knob" />
+    </button>
   );
 }
 
@@ -321,7 +420,11 @@ function Communities() {
   const uploadLogo = async () => {
     const pick = await api.openImageDialog({});
     if (!pick.ok) return;
-    const f = pick.files[0];
+    await sendLogo(pick.files[0]);
+  };
+
+  const sendLogo = async (f) => {
+    if (!f) return;
     const ext = f.name.toLowerCase().split(".").pop();
     const ct = ext === "png" ? "image/png" : ext === "webp" ? "image/webp" : "image/jpeg";
     setBusy(true);
@@ -384,7 +487,9 @@ function Communities() {
             </label>
             {msg && <div className="warnbox mb8">{msg}</div>}
             <div className="actions">
-              <button onClick={uploadLogo} disabled={busy}>Upload logo...</button>
+              <ImageDropWell onImageFile={sendLogo} onError={(dropError) => setMsg(dropError)} disabled={busy}>
+                <button onClick={uploadLogo} disabled={busy}>Upload logo...</button>
+              </ImageDropWell>
               <span style={{ flex: 1 }} />
               <button onClick={() => setEditing(null)}>Cancel</button>
               <button className="primary" onClick={save} disabled={busy}>Save</button>
