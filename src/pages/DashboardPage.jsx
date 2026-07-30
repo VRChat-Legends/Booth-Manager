@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Boxes, Building2, MessageSquareText, ShieldCheck, Sparkles } from "lucide-react";
+import { Boxes, Building2, MessageSquareText, Package, QrCode, ShieldCheck, Sparkles } from "lucide-react";
 import * as api from "../lib/api.js";
 
 export default function DashboardPage({ cfg, isAdmin, goTo, event }) {
@@ -89,30 +89,37 @@ export default function DashboardPage({ cfg, isAdmin, goTo, event }) {
           <div className="stat"><div className="v">{String(cfg.alleyRole || (isAdmin ? "staff" : "team")).toUpperCase()}</div><div className="l">Community role</div></div>
         </div>
 
-        <div className="dashboard-actions">
-          <button className="primary" onClick={() => goTo("booths")} disabled={!cfg.alleyCommunityId}><Boxes size={16} />Booth backups</button>
-          <button onClick={() => goTo("chat")}><MessageSquareText size={16} />Team chat</button>
-          {cfg.alleyCommunityId && <button onClick={() => goTo("alleyDashboard")}><Building2 size={16} />Community</button>}
-          <button onClick={() => goTo("standee")}><Sparkles size={16} />Standee Studio</button>
-          {isAdmin && <button onClick={() => goTo("alleyAdmin")}><ShieldCheck size={16} />Alley Admin</button>}
-        </div>
+        <div className="dashboard-workspace">
+          <section className="dashboard-section">
+            <div className="section-heading"><div><h2>Recent server uploads</h2><p>Only booth packages uploaded through the Legends Alley SDK appear here.</p></div><button className="ghost small" onClick={() => goTo("booths")} disabled={!cfg.alleyCommunityId}>View all</button></div>
+            {!booths && <div className="skeleton" style={{ height: 150 }} />}
+            {booths && latest.length === 0 && (
+              <div className="empty-state compact"><Boxes size={27} /><h2>No booth uploads yet</h2><p>Your first accepted SDK upload will appear here automatically.</p></div>
+            )}
+            <div className="recent-upload-list">
+              {latest.map((booth) => (
+                <button key={booth.id} className="upload-summary" onClick={() => goTo("booths")}>
+                  <span className="version-mark">v{booth.version}</span>
+                  <span className="grow"><strong>{booth.prefabName || `Booth version ${booth.version}`}</strong><small>{api.formatDate(booth.uploadedAt)} | {api.formatBytes(booth.fileSize)}</small></span>
+                  <span className={`pill ${booth.status === "active" ? "teal" : "gray"}`}>{booth.status}</span>
+                </button>
+              ))}
+            </div>
+          </section>
 
-        <section className="dashboard-section">
-          <div className="section-heading"><div><h2>Recent server uploads</h2><p>Only booth packages uploaded through the Legends Alley SDK appear here.</p></div><button className="ghost small" onClick={() => goTo("booths")} disabled={!cfg.alleyCommunityId}>View all</button></div>
-          {!booths && <div className="skeleton" style={{ height: 150 }} />}
-          {booths && latest.length === 0 && (
-            <div className="empty-state compact"><Boxes size={27} /><h2>No booth uploads yet</h2><p>Your first accepted SDK upload will appear here automatically.</p></div>
-          )}
-          <div className="recent-upload-list">
-            {latest.map((booth) => (
-              <button key={booth.id} className="upload-summary" onClick={() => goTo("booths")}>
-                <span className="version-mark">v{booth.version}</span>
-                <span className="grow"><strong>{booth.prefabName || `Booth version ${booth.version}`}</strong><small>{api.formatDate(booth.uploadedAt)} | {api.formatBytes(booth.fileSize)}</small></span>
-                <span className={`pill ${booth.status === "active" ? "teal" : "gray"}`}>{booth.status}</span>
-              </button>
-            ))}
-          </div>
-        </section>
+          <section className="dashboard-shortcuts">
+            <div className="section-heading"><div><h2>Quick access</h2><p>Jump back into your Alley workspace.</p></div></div>
+            <div className="dashboard-shortcut-grid">
+              <button className="featured" onClick={() => goTo("booths")} disabled={!cfg.alleyCommunityId}><Boxes size={19} /><span>Booth backups</span></button>
+              <button onClick={() => goTo("chat")}><MessageSquareText size={19} /><span>Team chat</span></button>
+              {cfg.alleyCommunityId && <button onClick={() => goTo("alleyDashboard")}><Building2 size={19} /><span>Community</span></button>}
+              <button onClick={() => goTo("standee")}><Sparkles size={19} /><span>Standee Studio</span></button>
+              <button onClick={() => goTo("unitySdk")}><Package size={19} /><span>Unity SDK</span></button>
+              <button onClick={() => goTo("qr")}><QrCode size={19} /><span>QR Codes</span></button>
+              {isAdmin && <button onClick={() => goTo("alleyAdmin")}><ShieldCheck size={19} /><span>Alley Admin</span></button>}
+            </div>
+          </section>
+        </div>
       </div>
     </div>
   );

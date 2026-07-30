@@ -6,6 +6,7 @@ import {
   Building2,
   Combine,
   Download,
+  Image,
   LayoutDashboard,
   LifeBuoy,
   LockKeyhole,
@@ -59,6 +60,14 @@ const NAV = [
     badge: "Soon",
     disabled: true,
     tooltip: "Coming soon: upload a 3D model with its textures and get back a single combined texture atlas, with an optional toggle to compress everything into one mesh"
+  },
+  {
+    id: "worldPosters",
+    label: "World Posters",
+    Icon: Image,
+    badge: "Soon",
+    disabled: true,
+    tooltip: "Coming soon: design and export polished posters for your VRChat worlds"
   },
   {
     id: "promo",
@@ -414,24 +423,25 @@ export default function App() {
           <img src={logoUrl} alt="" />
           <div><div className="t1">Booth Manager</div><div className="t2">Legends Alley</div></div>
         </div>
-        {visibleNav.map((item, index) => item.section ? (
-          <div key={`section-${index}`} className="nav-section">{item.section}</div>
-        ) : (
-          <button
-            type="button"
-            key={item.id}
-            className={`navitem${effectivePage === item.id ? " active" : ""}`}
-            disabled={item.disabled || (appLocked && item.id !== "booths")}
-            title={item.disabled ? (item.tooltip || "Coming soon") : appLocked && item.id !== "booths" ? "Backup-only mode is active" : ""}
-            onClick={() => !item.disabled && setPage(item.id)}
-          >
-            <item.Icon className="ico" size={17} strokeWidth={1.8} />
-            <span>{item.label}</span>
-            {item.id === "support" && ticketAttention > 0 && <span className="nav-badge attention">{ticketAttention}</span>}
-            {item.badge && <span className="nav-badge">{item.badge}</span>}
-          </button>
-        ))}
-        <div className="nav-spacer" />
+        <div className="nav-scroll">
+          {visibleNav.map((item, index) => item.section ? (
+            <div key={`section-${index}`} className="nav-section">{item.section}</div>
+          ) : (
+            <button
+              type="button"
+              key={item.id}
+              className={`navitem${effectivePage === item.id ? " active" : ""}`}
+              disabled={item.disabled || (appLocked && item.id !== "booths")}
+              title={item.disabled ? (item.tooltip || "Coming soon") : appLocked && item.id !== "booths" ? "Backup-only mode is active" : ""}
+              onClick={() => !item.disabled && setPage(item.id)}
+            >
+              <item.Icon className="ico" size={17} strokeWidth={1.8} />
+              <span>{item.label}</span>
+              {item.id === "support" && ticketAttention > 0 && <span className="nav-badge attention">{ticketAttention}</span>}
+              {item.badge && <span className="nav-badge">{item.badge}</span>}
+            </button>
+          ))}
+        </div>
         <div className="sidebar-status">
           <span className="service-dot online" />
           <span>{cfg.alleyCommunityName || (isStaff ? "Alley staff" : "Alley connected")}</span>
