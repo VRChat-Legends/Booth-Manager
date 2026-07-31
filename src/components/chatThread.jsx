@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import * as api from "../lib/api.js";
 import peerFiles from "../lib/peerFiles.js";
+import ModalPortal from "./ModalPortal.jsx";
 
 export const RISKY_FILE_PATTERN = /\.(exe|msi|bat|cmd|ps1|psm1|vbs|vbe|js|jse|jar|scr|com|dll|apk|reg|lnk|hta|wsf|wsh|gadget)$/i;
 
@@ -232,7 +233,7 @@ function FolderViewer({ attachment, communityId, own, onClose }) {
   };
 
   return (
-    <div className="modal-scrim" onClick={onClose}>
+    <ModalPortal><div className="modal-scrim" onClick={onClose}>
       <div className="modal folder-viewer" onClick={(clickEvent) => clickEvent.stopPropagation()}>
         <div className="fv-head">
           <Folder size={17} />
@@ -298,7 +299,7 @@ function FolderViewer({ attachment, communityId, own, onClose }) {
           {!subdirs.size && !files.length && <div className="muted small" style={{ padding: 14 }}>This folder level is empty.</div>}
         </div>
       </div>
-    </div>
+    </div></ModalPortal>
   );
 }
 
@@ -322,6 +323,18 @@ export function MessageList({
   peerDisabled = false
 }) {
   return messages.map((message, index) => {
+    if (message.authorRole === "system") {
+      return (
+        <div key={message.id} className={`ticket-system-event${message.action ? ` ${message.action}` : ""}`}>
+          <span className="ticket-system-line" />
+          <div>
+            <strong>{message.body}</strong>
+            <time dateTime={message.createdAt}>{api.formatDate(message.createdAt)}</time>
+          </div>
+          <span className="ticket-system-line" />
+        </div>
+      );
+    }
     const own = String(message.authorId) === ownId;
     const previous = messages[index - 1];
     const grouped = previous?.authorId === message.authorId

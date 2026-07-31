@@ -73,8 +73,8 @@ export default function BoothsPage({ cfg, appLocked, event, newUploadIds, onAckn
       .some((value) => String(value || "").toLowerCase().includes(search)));
   }, [booths, query]);
 
-  const download = async (booth) => {
-    setDownloading(`${booth.id}-v${booth.version}`);
+  const download = async (booth, boothKey) => {
+    setDownloading(boothKey);
     setError("");
     const safeName = String(booth.prefabName || "booth").replace(/[^A-Za-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "") || "booth";
     const result = await api.alleyDownload(booth.downloadUrl || `/api/booths/${booth.id}/download`, `${safeName}-v${booth.version}-backup.zip`);
@@ -121,10 +121,10 @@ export default function BoothsPage({ cfg, appLocked, event, newUploadIds, onAckn
       )}
 
       <div className="upload-card-grid">
-        {filtered.map((booth) => {
-          // Older uploads can share one server id across versions, so key and
-          // expansion tracking use id plus version to stay unique per card.
-          const boothKey = `${booth.id}-v${booth.version}`;
+        {filtered.map((booth, index) => {
+          // Legacy records can reuse both an id and version. Include immutable
+          // upload metadata plus the rendered index so one card owns one state.
+          const boothKey = [booth.id, booth.version, booth.uploadedAt, booth.fileName, booth.sha256, index].join("-");
           return (
           <article className={`upload-card${newUploadIds?.has(String(booth.id)) ? " new" : ""}`} key={boothKey}>
             <BoothPreview booth={booth} />
@@ -148,7 +148,7 @@ export default function BoothsPage({ cfg, appLocked, event, newUploadIds, onAckn
                 <button className="ghost right" onClick={() => setExpandedId((current) => current === boothKey ? "" : boothKey)}>
                   <ChevronDown size={15} className={expandedId === boothKey ? "flip" : ""} />{expandedId === boothKey ? "Hide details" : "Details"}
                 </button>
-                <button className="primary" onClick={() => download(booth)} disabled={downloading === boothKey}>
+                <button className="primary" onClick={() => download(booth, boothKey)} disabled={downloading === boothKey}>
                   <Download size={15} />{downloading === boothKey ? "Downloading" : "Download ZIP"}
                 </button>
               </div>

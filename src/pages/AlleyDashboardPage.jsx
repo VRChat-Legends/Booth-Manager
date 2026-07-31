@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Download } from "lucide-react";
+import { Download, Plus, Save, Trash2, UserRoundPlus } from "lucide-react";
 import * as api from "../lib/api.js";
 import * as audio from "../lib/audio.js";
 import { ImageDropWell } from "../components/dropZone.jsx";
@@ -235,6 +235,10 @@ function Team({ me, reload }) {
   const c = me.community;
   const canEdit = me.role === "owner" || me.staff;
   const [managerId, setManagerId] = useState("");
+  const [members, setMembers] = useState(() => (c.teamMembers || []).map((member) => ({
+    name: String(member.name || ""),
+    discordId: String(member.discordId || "")
+  })));
   const [msg, setMsg] = useState(null);
   const [busy, setBusy] = useState(false);
 
@@ -262,8 +266,40 @@ function Team({ me, reload }) {
     setMsg(r.status === 200 ? { ok: true, t: "Discord roles synced." } : { ok: false, t: r.error || "Sync failed (10 minute cooldown applies)" });
   };
 
+  const updateMember = (index, patch) => {
+    setMembers((current) => current.map((member, memberIndex) => memberIndex === index ? { ...member, ...patch } : member));
+    setMsg(null);
+  };
+
+  const addMember = () => {
+    if (members.length >= 8) return;
+    setMembers((current) => current.concat({ name: "", discordId: "" }));
+    setMsg(null);
+  };
+
+  const removeMember = (index) => {
+    setMembers((current) => current.filter((_, memberIndex) => memberIndex !== index));
+    setMsg(null);
+  };
+
+  const saveMembers = async () => {
+    const cleaned = members.map((member) => ({ name: member.name.trim(), discordId: member.discordId.trim() })).filter((member) => member.name);
+    if (cleaned.some((member) => member.name.length < 2)) {
+      setMsg({ ok: false, t: "Each team member needs a name at least 2 characters long." });
+      return;
+    }
+    setBusy(true);
+    const r = await api.alley("/api/communities/mine", { method: "PATCH", json: { teamMembers: cleaned } });
+    setBusy(false);
+    setMsg(r.status === 200 ? { ok: true, t: "Team saved. Discord role sync is now pending." } : { ok: false, t: r.error || "Team save failed." });
+    if (r.status === 200) {
+      audio.success();
+      await reload();
+    }
+  };
+
   return (
-    <div className="stagger" style={{ display: "flex", flexDirection: "column", gap: 14, maxWidth: 640 }}>
+    <div className="stagger" style={{ display: "flex", flexDirection: "column", gap: 14, maxWidth: 900 }}>
       <div className="card">
         <h3>Owner</h3>
         <div className="listrow">
@@ -301,22 +337,24 @@ function Team({ me, reload }) {
       <div className="card">
         <div className="row mb8">
           <h3 style={{ margin: 0 }}>Team members</h3>
-          <span className="muted tiny right">{c.teamMembers?.length || 0} / 8</span>
+          <span className="muted tiny right">{members.length} / 8</span>
         </div>
-        {(c.teamMembers || []).length === 0 && <div className="muted small">No team members listed.</div>}
-        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-          {(c.teamMembers || []).map((m, i) => (
-            <div className="listrow" key={`${m.discordId}${i}`}>
-              <div className="avatar" style={{ width: 32, height: 32, fontSize: 13 }}>{(m.name || "?")[0]?.toUpperCase()}</div>
-              <div className="grow">
-                <div className="title" style={{ fontSize: 12.5 }}>{m.name || "Unnamed"}</div>
-                <div className="meta">{m.discordId}</div>
-              </div>
+        <p className="muted tiny team-help">Members listed here can sign in, use team chat, and access community tools. Discord ID links the member to their account and role sync.</p>
+        {members.length === 0 && <div className="team-empty"><UserRoundPlus size={22} /><span>No team members yet. Add the people who work on your booth and community.</span></div>}
+        <div className="team-editor-list">
+          {members.map((member, index) => (
+            <div className="team-editor-row" key={index}>
+              <div className="avatar">{(member.name || "?")[0]?.toUpperCase()}</div>
+              <label><span>Display name</span><input type="text" maxLength={32} value={member.name} disabled={!canEdit || busy} onChange={(event) => updateMember(index, { name: event.target.value })} placeholder="VRChat display name" /></label>
+              <label><span>Discord user ID</span><input type="text" maxLength={25} value={member.discordId} disabled={!canEdit || busy} onChange={(event) => updateMember(index, { discordId: event.target.value.replace(/\D/g, "") })} placeholder="123456789012345678" /></label>
+              {canEdit && <button className="icon-button danger" title="Remove team member" disabled={busy} onClick={() => removeMember(index)}><Trash2 size={15} /></button>}
             </div>
           ))}
         </div>
-        <div className="row mt12">
-          <button onClick={syncRoles} disabled={busy}>Sync Discord roles</button>
+        <div className="row mt12 team-actions">
+          {canEdit && <button onClick={addMember} disabled={busy || members.length >= 8}><Plus size={14} />Add member</button>}
+          {canEdit && <button className="primary" onClick={saveMembers} disabled={busy}><Save size={14} />Save team</button>}
+          <button className="right" onClick={syncRoles} disabled={busy}>Sync Discord roles</button>
           {msg && <span className={msg.ok ? "teal small" : "danger-text small"}>{msg.t}</span>}
         </div>
       </div>

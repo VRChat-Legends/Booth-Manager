@@ -483,6 +483,82 @@ ipcMain.handle("file:readImage", (_e, filePath) => {
   }
 });
 
+const ATLAS_EXTENSIONS = new Set([".obj", ".mtl", ".png", ".jpg", ".jpeg", ".webp"]);
+const ATLAS_FILE_LIMIT = 64;
+const ATLAS_FILE_BYTES = 64 * 1024 * 1024;
+const ATLAS_TOTAL_BYTES = 192 * 1024 * 1024;
+
+function atlasReferences(text, extension) {
+  const references = [];
+  for (const rawLine of String(text || "").split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith("#")) continue;
+    if (extension === ".obj") {
+      const match = line.match(/^mtllib\s+(.+)$/i);
+      if (match) references.push(match[1].trim().replace(/^['"]|['"]$/g, ""));
+      continue;
+    }
+    const match = line.match(/^(?:map_Kd|map_Ka|map_Ke|map_Bump|bump|norm)\s+(.+)$/i);
+    if (!match) continue;
+    const value = match[1].trim();
+    const quoted = value.match(/["']([^"']+)["']\s*$/);
+    const token = quoted ? quoted[1] : value.split(/\s+/).pop();
+    if (token) references.push(token);
+  }
+  return references;
+}
+
+function readAtlasPackage(inputPaths) {
+  const queue = (Array.isArray(inputPaths) ? inputPaths : []).map((value) => path.resolve(String(value || ""))).filter(Boolean);
+  const seen = new Set();
+  const files = [];
+  let totalBytes = 0;
+  while (queue.length && files.length < ATLAS_FILE_LIMIT) {
+    const filePath = queue.shift();
+    const key = filePath.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    try {
+      const extension = path.extname(filePath).toLowerCase();
+      if (!ATLAS_EXTENSIONS.has(extension)) continue;
+      const stat = fs.statSync(filePath);
+      if (!stat.isFile()) continue;
+      if (stat.size > ATLAS_FILE_BYTES) throw new Error(`${path.basename(filePath)} is larger than 64 MB.`);
+      totalBytes += stat.size;
+      if (totalBytes > ATLAS_TOTAL_BYTES) throw new Error("The model package is larger than 192 MB.");
+      if (extension === ".obj" || extension === ".mtl") {
+        const text = fs.readFileSync(filePath, "utf8");
+        files.push({ name: path.basename(filePath), path: filePath, extension, text, size: stat.size });
+        for (const reference of atlasReferences(text, extension)) {
+          const referencedPath = path.resolve(path.dirname(filePath), reference.replace(/[\\/]+/g, path.sep));
+          if (ATLAS_EXTENSIONS.has(path.extname(referencedPath).toLowerCase()) && fs.existsSync(referencedPath)) queue.push(referencedPath);
+        }
+      } else {
+        const mime = extension === ".png" ? "image/png" : extension === ".webp" ? "image/webp" : "image/jpeg";
+        files.push({ name: path.basename(filePath), path: filePath, extension, mime, dataBase64: fs.readFileSync(filePath).toString("base64"), size: stat.size });
+      }
+    } catch (error) {
+      return { ok: false, error: String(error.message || error), files: [] };
+    }
+  }
+  if (!files.some((file) => file.extension === ".obj")) return { ok: false, error: "Choose an OBJ model package.", files: [] };
+  return { ok: true, files, totalBytes };
+}
+
+ipcMain.handle("dialog:openAtlasPackage", async () => {
+  const result = await dialog.showOpenDialog(mainWindow, {
+    properties: ["openFile", "multiSelections"],
+    filters: [
+      { name: "OBJ model package", extensions: ["obj", "mtl", "png", "jpg", "jpeg", "webp"] },
+      { name: "Wavefront OBJ", extensions: ["obj"] }
+    ]
+  });
+  if (result.canceled || !result.filePaths.length) return { ok: false, canceled: true, files: [] };
+  return readAtlasPackage(result.filePaths);
+});
+
+ipcMain.handle("atlas:readPackage", (_event, paths) => readAtlasPackage(paths));
+
 // staff popup attachments upload straight from disk so the renderer never
 // holds the bytes; the service enforces staff auth and the 40 MB cap again
 ipcMain.handle("alley:broadcastAssets", async () => {

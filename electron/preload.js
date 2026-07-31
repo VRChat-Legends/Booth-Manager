@@ -34,6 +34,8 @@ contextBridge.exposeInMainWorld("boothApi", {
   },
   addSharedPaths: (paths) => ipcRenderer.invoke("shares:addPaths", paths),
   readImageFile: (path) => ipcRenderer.invoke("file:readImage", path),
+  openAtlasPackage: () => ipcRenderer.invoke("dialog:openAtlasPackage"),
+  readAtlasPackage: (paths) => ipcRenderer.invoke("atlas:readPackage", paths),
   broadcastUploadAssets: () => ipcRenderer.invoke("alley:broadcastAssets"),
   saveFileDialog: (opts) => ipcRenderer.invoke("dialog:saveFile", opts),
   pickFolder: () => ipcRenderer.invoke("dialog:pickFolder"),

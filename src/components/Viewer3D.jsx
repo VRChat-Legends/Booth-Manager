@@ -10,10 +10,13 @@ import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
  *  - source: { type: "obj", objUrl, mtlUrl, resourcePath } | { type: "geometry", build: (THREE) => THREE.Object3D }
  *  - autoRotate: boolean
  *  - textureOverrides: { [materialName]: dataUrl } applied live
+ *  - viewDirection: [x, y, z] initial camera direction from the model
+ *  - frameFactor: camera fit margin multiplier
+ *  - inspection: brighter neutral lighting for dark asset inspection
  *  - style: css for the wrapper
  *  - onReady: (info { triangles, materials }) => void
  */
-export default function Viewer3D({ source, autoRotate = false, textureOverrides, style, onReady, hint }) {
+export default function Viewer3D({ source, autoRotate = false, textureOverrides, style, onReady, hint, viewDirection = [0.62, 0.42, 0.75], frameFactor = 1.35, inspection = false }) {
   const wrapRef = useRef(null);
   const stateRef = useRef(null);
   const [loadState, setLoadState] = useState(source ? "loading" : "idle");
@@ -48,8 +51,8 @@ export default function Viewer3D({ source, autoRotate = false, textureOverrides,
     controls.maxDistance = 40;
 
     // lights: key + fill + rim, alley night mood
-    scene.add(new THREE.AmbientLight(0xbfd8e0, 0.55));
-    const key = new THREE.DirectionalLight(0xffffff, 1.35);
+    scene.add(new THREE.AmbientLight(inspection ? 0xffffff : 0xbfd8e0, inspection ? 1.15 : 0.55));
+    const key = new THREE.DirectionalLight(0xffffff, inspection ? 1.8 : 1.35);
     key.position.set(-3, 6, 4);
     scene.add(key);
     const rim = new THREE.DirectionalLight(0x00e6cc, 0.45);
@@ -80,8 +83,19 @@ export default function Viewer3D({ source, autoRotate = false, textureOverrides,
       const center = box.getCenter(new THREE.Vector3());
       const radius = Math.max(size.x, size.y, size.z) * 0.5 || 1;
       controls.target.copy(center);
-      const dist = radius / Math.tan((camera.fov * Math.PI) / 360) * 1.35;
-      camera.position.set(center.x + dist * 0.62, center.y + dist * 0.42, center.z + dist * 0.75);
+      const dist = radius / Math.tan((camera.fov * Math.PI) / 360) * frameFactor;
+      controls.minDistance = Math.max(radius * 0.25, 0.0001);
+      controls.maxDistance = Math.max(radius * 100, dist * 4);
+      const groundRadius = radius * 2.5;
+      const groundScale = groundRadius / 6;
+      ground.scale.setScalar(groundScale);
+      ring.scale.setScalar(groundScale);
+      ground.position.y = box.min.y - radius * 0.04;
+      ring.position.y = ground.position.y + radius * 0.002;
+      const direction = new THREE.Vector3(...viewDirection);
+      if (direction.lengthSq() < 0.0001) direction.set(0.62, 0.42, 0.75);
+      direction.normalize();
+      camera.position.copy(center).addScaledVector(direction, dist);
       camera.near = Math.max(0.01, dist / 100);
       camera.far = dist * 40;
       camera.updateProjectionMatrix();

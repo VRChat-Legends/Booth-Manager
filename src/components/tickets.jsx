@@ -17,6 +17,7 @@ import * as audio from "../lib/audio.js";
 import peerFiles from "../lib/peerFiles.js";
 import { MessageList, iconFor } from "./chatThread.jsx";
 import { DropOverlay, useFileDrop } from "./dropZone.jsx";
+import ModalPortal from "./ModalPortal.jsx";
 
 export function statusMeta(status, staffView = false) {
   switch (status) {
@@ -350,7 +351,7 @@ export function NewTicketModal({ initial, onClose, onCreated }) {
   };
 
   return (
-    <div className="modal-scrim" onClick={onClose}>
+    <ModalPortal><div className="modal-scrim" onClick={onClose}>
       <div className="modal ticket-compose drop-zone" onClick={(clickEvent) => clickEvent.stopPropagation()} {...drop.bind}>
         <DropOverlay active={drop.dragOver} label="Drop to attach to the ticket" />
         <h2><LifeBuoy size={17} /> New support ticket</h2>
@@ -397,6 +398,6 @@ export function NewTicketModal({ initial, onClose, onCreated }) {
           <button className="primary" onClick={submit} disabled={busy}>{busy ? "Creating..." : "Create ticket"}</button>
         </div>
       </div>
-    </div>
+    </div></ModalPortal>
   );
 }

@@ -2,11 +2,12 @@
 // controls and a context side panel (community, current booth, opener
 // history). Rendered as a tab inside the Alley Admin page.
 import { useCallback, useEffect, useState } from "react";
-import { ArrowLeft, Building2, ExternalLink, Hand, UserPlus, XCircle, RotateCcw } from "lucide-react";
+import { AlertTriangle, ArrowLeft, Building2, ExternalLink, Hand, Pencil, RotateCcw, Trash2, UserPlus, XCircle } from "lucide-react";
 import * as api from "../lib/api.js";
 import * as audio from "../lib/audio.js";
 import { TicketThread, TypePill, statusMeta } from "../components/tickets.jsx";
 import { AlleyBoothRow } from "./AlleyDashboardPage.jsx";
+import ModalPortal from "../components/ModalPortal.jsx";
 
 const FILTERS = [
   ["all", "All", ""],
@@ -109,8 +110,12 @@ function StaffTicketDetail({ cfg, ticketId, onBack, onOpenBooths }) {
   const [ticket, setTicket] = useState(null);
   const [context, setContext] = useState(null);
   const [reassigning, setReassigning] = useState(false);
+  const [renaming, setRenaming] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [subject, setSubject] = useState("");
   const [staffId, setStaffId] = useState("");
   const [busy, setBusy] = useState(false);
+  const [threadRevision, setThreadRevision] = useState(0);
   const [actionError, setActionError] = useState("");
   const selfId = String(cfg.alleyDiscordId || "");
 
@@ -128,6 +133,7 @@ function StaffTicketDetail({ cfg, ticketId, onBack, onOpenBooths }) {
     if (result.status === 200) {
       audio.success();
       if (result.data?.ticket) setTicket(result.data.ticket);
+      setThreadRevision((current) => current + 1);
       return true;
     }
     setActionError(result.error || "The action failed.");
@@ -144,6 +150,45 @@ function StaffTicketDetail({ cfg, ticketId, onBack, onOpenBooths }) {
     }
   };
 
+  const openRename = () => {
+    setSubject(ticket?.subject || "");
+    setActionError("");
+    setRenaming(true);
+  };
+
+  const renameTicket = async () => {
+    const nextSubject = subject.trim();
+    if (!nextSubject) return;
+    setBusy(true);
+    setActionError("");
+    const result = await api.alley(`/api/tickets/${encodeURIComponent(ticketId)}`, {
+      method: "PATCH",
+      json: { subject: nextSubject }
+    });
+    setBusy(false);
+    if (result.status === 200) {
+      audio.success();
+      setTicket(result.data?.ticket || ticket);
+      setRenaming(false);
+      setThreadRevision((current) => current + 1);
+    } else {
+      setActionError(result.error || "The ticket name could not be changed.");
+    }
+  };
+
+  const deleteTicket = async () => {
+    setBusy(true);
+    setActionError("");
+    const result = await api.alley(`/api/tickets/${encodeURIComponent(ticketId)}`, { method: "DELETE" });
+    setBusy(false);
+    if (result.status === 200) {
+      audio.success();
+      onBack();
+    } else {
+      setActionError(result.error || "The ticket could not be deleted.");
+    }
+  };
+
   const claimedBySelf = ticket?.assignedStaffId === selfId;
 
   return (
@@ -154,6 +199,7 @@ function StaffTicketDetail({ cfg, ticketId, onBack, onOpenBooths }) {
       </div>
       <div className="ticket-detail-layout">
         <TicketThread
+          key={`${ticketId}-${threadRevision}`}
           cfg={cfg}
           ticketId={ticketId}
           staffView
@@ -175,6 +221,8 @@ function StaffTicketDetail({ cfg, ticketId, onBack, onOpenBooths }) {
               {ticket.status === "closed" && (
                 <button className="small" disabled={busy} onClick={reopenTicket}><RotateCcw size={13} />Reopen</button>
               )}
+              <button className="small" disabled={busy} onClick={openRename} title="Change the ticket name"><Pencil size={13} />Rename</button>
+              <button className="danger small" disabled={busy} onClick={() => setDeleting(true)} title="Permanently delete this ticket"><Trash2 size={13} />Delete</button>
             </span>
           )}
         />
@@ -182,7 +230,7 @@ function StaffTicketDetail({ cfg, ticketId, onBack, onOpenBooths }) {
       </div>
 
       {reassigning && (
-        <div className="modal-scrim" onClick={() => setReassigning(false)}>
+        <ModalPortal><div className="modal-scrim" onClick={() => setReassigning(false)}>
           <div className="modal" onClick={(clickEvent) => clickEvent.stopPropagation()}>
             <h2>Reassign ticket</h2>
             <p className="muted small">Hands the ticket to another staff member, for example when the current owner is offline. This is deliberate, not automatic.</p>
@@ -195,7 +243,46 @@ function StaffTicketDetail({ cfg, ticketId, onBack, onOpenBooths }) {
               <button className="primary" disabled={busy || !staffId.trim()} onClick={reassign}>Reassign</button>
             </div>
           </div>
-        </div>
+        </div></ModalPortal>
+      )}
+
+      {renaming && (
+        <ModalPortal><div className="modal-scrim" onClick={() => setRenaming(false)}>
+          <div className="modal ticket-action-modal" onClick={(clickEvent) => clickEvent.stopPropagation()}>
+            <div className="modal-title-row"><Pencil size={18} /><div><h2>Rename ticket</h2><p>The change will be recorded in the ticket history.</p></div></div>
+            <label className="field"><span>Ticket name</span>
+              <input
+                type="text"
+                maxLength={120}
+                value={subject}
+                onChange={(changeEvent) => setSubject(changeEvent.target.value)}
+                onKeyDown={(keyboardEvent) => {
+                  if (keyboardEvent.key === "Enter") renameTicket();
+                }}
+                autoFocus
+              />
+            </label>
+            {actionError && <div className="errbox mb8">{actionError}</div>}
+            <div className="actions">
+              <button onClick={() => setRenaming(false)}>Cancel</button>
+              <button className="primary" disabled={busy || !subject.trim() || subject.trim() === ticket?.subject} onClick={renameTicket}>Save name</button>
+            </div>
+          </div>
+        </div></ModalPortal>
+      )}
+
+      {deleting && (
+        <ModalPortal><div className="modal-scrim" onClick={() => setDeleting(false)}>
+          <div className="modal ticket-action-modal" onClick={(clickEvent) => clickEvent.stopPropagation()}>
+            <div className="modal-title-row danger-text"><AlertTriangle size={20} /><div><h2>Delete ticket permanently?</h2><p>This removes the conversation, attachment records, and ticket history. This cannot be undone.</p></div></div>
+            <div className="ticket-delete-summary"><strong>{ticket?.subject}</strong><span>Opened by {ticket?.openerName}</span></div>
+            {actionError && <div className="errbox mb8">{actionError}</div>}
+            <div className="actions">
+              <button onClick={() => setDeleting(false)}>Keep ticket</button>
+              <button className="danger" disabled={busy} onClick={deleteTicket}><Trash2 size={14} />{busy ? "Deleting..." : "Delete permanently"}</button>
+            </div>
+          </div>
+        </div></ModalPortal>
       )}
     </div>
   );

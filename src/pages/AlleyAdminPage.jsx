@@ -4,6 +4,7 @@ import * as api from "../lib/api.js";
 import * as audio from "../lib/audio.js";
 import { MarkdownView } from "../lib/markdown.jsx";
 import { ImageDropWell } from "../components/dropZone.jsx";
+import ModalPortal from "../components/ModalPortal.jsx";
 import { AlleyBoothRow } from "./AlleyDashboardPage.jsx";
 import AdminTickets from "./AdminTicketsPage.jsx";
 
@@ -102,7 +103,10 @@ function PlatformControls() {
       api.alley("/api/public/app-status")
     ]);
     if (lock.status === 200) setAppLock(lock.data);
+    else setErr(lock.error || "Could not read the app lock state.");
     if (status.status === 200) setLoungeLocked(status.data?.loungeLocked === true);
+    else setErr(status.error || "Could not read the lounge lock state.");
+    return { lock, status };
   }, []);
   useEffect(() => { load(); }, [load]);
 
@@ -111,12 +115,16 @@ function PlatformControls() {
     setBusy("app");
     setErr("");
     const r = await api.alley("/api/admin/app-lock", { method: "POST", json: { locked: next } });
-    setBusy("");
     if (r.status === 200) {
-      audio.success();
-      setAppLock((current) => ({ ...current, locked: r.data?.locked === true }));
-      load();
-    } else setErr(r.error || "The app lock did not change.");
+      const verified = await api.alley("/api/admin/app-lock");
+      if (verified.status === 200 && (verified.data?.locked === true) === next) {
+        audio.success();
+        setAppLock(verified.data);
+      } else {
+        setErr(verified.error || "The server did not save the app lock. Check the backend deployment.");
+      }
+    } else setErr(r.error || `The app lock did not change (HTTP ${r.status || "error"}).`);
+    setBusy("");
   };
 
   const toggleLounge = async () => {
@@ -124,11 +132,16 @@ function PlatformControls() {
     setBusy("lounge");
     setErr("");
     const r = await api.alley("/api/chat/lock", { method: "POST", json: { communityId: "global", locked: next } });
-    setBusy("");
     if (r.status === 200) {
-      audio.success();
-      setLoungeLocked(r.data?.locked === true);
-    } else setErr(r.error || "The lounge lock did not change.");
+      const verified = await api.alley("/api/public/app-status");
+      if (verified.status === 200 && (verified.data?.loungeLocked === true) === next) {
+        audio.success();
+        setLoungeLocked(next);
+      } else {
+        setErr(verified.error || "The server did not save the lounge lock. Check the backend deployment.");
+      }
+    } else setErr(r.error || `The lounge lock did not change (HTTP ${r.status || "error"}).`);
+    setBusy("");
   };
 
   return (
@@ -138,7 +151,7 @@ function PlatformControls() {
         <div className="grow">
           <div className="title">Lock the app</div>
           <div className="meta">
-            Puts every non-staff install into backup-only mode within a minute.
+            Puts every non-staff install into backup-only mode within a minute. Staff accounts remain exempt so you can unlock it.
             {appLock?.locked && appLock.lockedBy ? ` Locked by ${appLock.lockedBy}${appLock.lockedAt ? `, ${api.timeAgo(appLock.lockedAt)}` : ""}.` : ""}
           </div>
         </div>
@@ -149,7 +162,7 @@ function PlatformControls() {
         <span className={`control-ico${loungeLocked ? " hot" : ""}`}><MessageSquareOff size={17} /></span>
         <div className="grow">
           <div className="title">Lock the Alley Lounge</div>
-          <div className="meta">Freezes the public chat room for everyone except Alley staff.</div>
+          <div className="meta">Freezes posting for regular members. Alley staff can still post while they test or unlock it.</div>
         </div>
         {loungeLocked && <span className="pill red">LOCKED</span>}
         <Switch checked={loungeLocked === true} disabled={loungeLocked === null || busy === "lounge"} onChange={toggleLounge} />
@@ -213,7 +226,7 @@ function BroadcastComposer({ onClose }) {
   };
 
   return (
-    <div className="modal-scrim" onClick={onClose}>
+    <ModalPortal><div className="modal-scrim" onClick={onClose}>
       <div className="modal broadcast-compose" onClick={(clickEvent) => clickEvent.stopPropagation()}>
         <h2><Megaphone size={17} /> Send a popup to everyone online</h2>
         <p className="muted small mb12">Shows instantly for every user whose app is open right now. People who are offline never see it.</p>
@@ -258,7 +271,7 @@ function BroadcastComposer({ onClose }) {
           <button className="primary" onClick={send} disabled={sending}>{sending ? "Sending..." : "Send popup"}</button>
         </div>
       </div>
-    </div>
+    </div></ModalPortal>
   );
 }
 
@@ -343,7 +356,7 @@ function Applications() {
       </div>
 
       {rejecting && (
-        <div className="modal-scrim" onClick={() => setRejecting(null)}>
+        <ModalPortal><div className="modal-scrim" onClick={() => setRejecting(null)}>
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <h2>Reject {rejecting.communityName}</h2>
             <label className="field"><span>Note (sent to the applicant)</span>
@@ -354,7 +367,7 @@ function Applications() {
               <button className="danger" disabled={busy} onClick={reject}>Reject application</button>
             </div>
           </div>
-        </div>
+        </div></ModalPortal>
       )}
     </div>
   );
@@ -450,7 +463,7 @@ function Communities() {
       </div>
 
       {editing && draft && (
-        <div className="modal-scrim" onClick={() => setEditing(null)}>
+        <ModalPortal><div className="modal-scrim" onClick={() => setEditing(null)}>
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <h2>Edit {editing.name}</h2>
             <div className="grid2">
@@ -495,7 +508,7 @@ function Communities() {
               <button className="primary" onClick={save} disabled={busy}>Save</button>
             </div>
           </div>
-        </div>
+        </div></ModalPortal>
       )}
     </div>
   );
@@ -624,7 +637,7 @@ function Events() {
       </div>
 
       {editing !== null && draft && (
-        <div className="modal-scrim" onClick={() => setEditing(null)}>
+        <ModalPortal><div className="modal-scrim" onClick={() => setEditing(null)}>
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <h2>{editing.id ? `Edit ${editing.name}` : "New event"}</h2>
             <div className="grid2">
@@ -667,11 +680,11 @@ function Events() {
               <button className="primary" onClick={save} disabled={busy}>{editing.id ? "Save" : "Create"}</button>
             </div>
           </div>
-        </div>
+        </div></ModalPortal>
       )}
 
       {confirmDelete && (
-        <div className="modal-scrim" onClick={() => setConfirmDelete(null)}>
+        <ModalPortal><div className="modal-scrim" onClick={() => setConfirmDelete(null)}>
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <h2>Delete {confirmDelete.name}?</h2>
             <p className="muted small">Booth uploads tied to this event can be kept or deleted with it.</p>
@@ -681,7 +694,7 @@ function Events() {
               <button className="danger" onClick={() => remove(confirmDelete, true)} disabled={busy}>Delete + booths</button>
             </div>
           </div>
-        </div>
+        </div></ModalPortal>
       )}
     </div>
   );

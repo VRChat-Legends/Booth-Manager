@@ -44,6 +44,8 @@ export const openSharedFolder = () => api.openSharedFolder();
 export const pathForFile = (file) => api.pathForFile(file);
 export const addSharedPaths = (paths) => api.addSharedPaths(paths);
 export const readImageFile = (path) => api.readImageFile(path);
+export const openAtlasPackage = () => api.openAtlasPackage();
+export const readAtlasPackage = (paths) => api.readAtlasPackage(paths);
 export const broadcastUploadAssets = () => api.broadcastUploadAssets();
 export const saveFileDialog = (opts) => api.saveFileDialog(opts);
 export const pickFolder = () => api.pickFolder();

@@ -38,6 +38,7 @@ import BugsPage from "./pages/BugsPage.jsx";
 import SupportPage from "./pages/SupportPage.jsx";
 import UnitySdkPage from "./pages/UnitySdkPage.jsx";
 import QrPage from "./pages/QrPage.jsx";
+import TextureAtlasPage from "./pages/TextureAtlasPage.jsx";
 import logoUrl from "../assets/app-icon.png";
 
 const NAV = [
@@ -53,14 +54,7 @@ const NAV = [
   { id: "standee", label: "Standee Studio", Icon: Sparkles },
   { id: "unitySdk", label: "Unity SDK", Icon: Package },
   { id: "qr", label: "QR Codes", Icon: QrCode },
-  {
-    id: "atlas",
-    label: "Texture Atlas",
-    Icon: Combine,
-    badge: "Soon",
-    disabled: true,
-    tooltip: "Coming soon: upload a 3D model with its textures and get back a single combined texture atlas, with an optional toggle to compress everything into one mesh"
-  },
+  { id: "atlas", label: "Texture Atlas", Icon: Combine },
   {
     id: "worldPosters",
     label: "World Posters",
@@ -92,6 +86,7 @@ const TITLES = {
   standee: "Standee Studio",
   unitySdk: "Unity SDK",
   qr: "QR Codes",
+  atlas: "Texture Atlas",
   support: "Support",
   bugs: "Bug Tracker",
   changelog: "Change Log",
@@ -410,6 +405,7 @@ export default function App() {
     standee: StandeePage,
     unitySdk: UnitySdkPage,
     qr: QrPage,
+    atlas: TextureAtlasPage,
     support: SupportPage,
     bugs: BugsPage,
     changelog: ChangelogPage,

@@ -56,7 +56,10 @@ export default function DashboardPage({ cfg, isAdmin, goTo, event }) {
       </div>
 
       <div className="stagger dashboard-stack">
-        <section className="hero event-hero" style={{ "--event-image": "url('./booth-model/banner_1920.png')" }}>
+        <section className="hero event-hero">
+          <video className="event-hero-media" autoPlay muted loop playsInline poster="./booth-model/legends-banner.webp" aria-hidden="true">
+            <source src="./booth-model/legends-banner.mp4" type="video/mp4" />
+          </video>
           <div className="grow">
             <h2>{event?.name || "Legends Alley"}</h2>
             <div className="date">
