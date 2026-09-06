@@ -1,0 +1,83 @@
+.markdown-view {
+  min-width: 0;
+  max-width: 100%;
+  color: inherit;
+  font-size: inherit;
+  line-height: inherit;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.markdown-view :is(p, blockquote, ul, ol, dl, pre, table, details, .markdown-code-block, .markdown-table-scroll) { margin: 0 0 .8em; }
+.markdown-view > :first-child { margin-top: 0; }
+.markdown-view > :last-child, .markdown-view :is(li, blockquote, dd) > :last-child { margin-bottom: 0; }
+.markdown-view :is(h1, h2, h3, h4, h5, h6) { margin: 1em 0 .45em; color: inherit; font-family: inherit; font-weight: 650; line-height: 1.3; letter-spacing: normal; }
+.markdown-view h1 { font-size: 1.8em; }
+.markdown-view h2 { font-size: 1.5em; }
+.markdown-view h3 { font-size: 1.28em; }
+.markdown-view h4 { font-size: 1.12em; }
+.markdown-view h5 { font-size: 1em; }
+.markdown-view h6 { font-size: .92em; color: #b8b1c3; }
+.markdown-view :is(ul, ol) { padding-left: 1.7em; }
+.markdown-view li { margin: .22em 0; }
+.markdown-view li > :is(ul, ol) { margin: .3em 0; }
+.markdown-view li > p { margin: .4em 0; }
+.markdown-view dt { font-weight: 650; }
+.markdown-view dd { margin: .3em 0 .7em 1.7em; }
+.markdown-view .task-list-item { list-style: none; }
+.markdown-view input[type="checkbox"] { display: inline-block; width: 1em; height: 1em; min-height: 0; margin: 0 .4em 0 -1.4em; padding: 0; vertical-align: -.1em; accent-color: var(--accent, #f4a7e8); opacity: 1; cursor: default; }
+.markdown-view blockquote { padding: .55em .9em; border-left: 3px solid #c199be; border-radius: 0 3px 3px 0; background: #ffffff05; color: #c0b6ca; }
+.markdown-view blockquote blockquote { margin-top: .5em; }
+.markdown-view hr { margin: 1em 0; border: 0; border-top: 1px solid var(--border-soft, #ffffff19); }
+.markdown-view a { color: #a9c4ff; text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 2px; cursor: pointer; }
+.markdown-view a:hover { color: #d1dfff; }
+.markdown-view :is(a, button, summary, pre, .markdown-table-scroll):focus-visible { outline: 2px solid var(--accent, #f4a7e8); outline-offset: 3px; }
+.markdown-view :is(code, kbd, samp) { border: 1px solid var(--border-soft, #ffffff19); border-radius: 3px; padding: .08em .3em; background: #0f0d14; color: #edc8e5; font-family: Consolas, "Cascadia Code", monospace; font-size: .92em; white-space: break-spaces; }
+.markdown-view kbd { box-shadow: 0 1px 0 #ffffff25; }
+.markdown-view .markdown-code-block { min-width: 0; max-width: 100%; overflow: hidden; border: 1px solid var(--border-soft, #ffffff19); border-radius: 4px; background: #0d0b12; }
+.markdown-view .markdown-code-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 5px 9px; border-bottom: 1px solid var(--border-soft, #ffffff19); background: #ffffff04; color: #b8a9c4; font-size: .85em; }
+.markdown-view button { min-height: 26px; padding: 3px 8px; border: 1px solid var(--border-soft, #ffffff19); border-radius: 3px; background: #ffffff08; color: inherit; font-family: inherit; font-size: .95em; line-height: 1.4; cursor: pointer; }
+.markdown-view button:hover:not(:disabled) { border-color: #f4a7e854; background: #f4a7e812; }
+.markdown-view button:disabled { cursor: default; opacity: .6; }
+.markdown-view pre { max-width: 100%; max-height: 32rem; padding: 11px 13px; overflow: auto; overscroll-behavior: contain; border: 0; border-radius: 0; background: #0d0b12; color: #d6d0df; font-family: Consolas, "Cascadia Code", monospace; font-size: .92em; line-height: 1.55; text-align: left; white-space: pre; overflow-wrap: normal; tab-size: 4; }
+.markdown-view .markdown-code-block > pre { margin: 0; }
+.markdown-view pre code { padding: 0; border: 0; border-radius: 0; background: none; color: inherit; font-size: inherit; white-space: pre; overflow-wrap: normal; }
+.markdown-view .markdown-copy-status:empty { display: none; }
+.markdown-view .markdown-copy-status { display: block; padding: 4px 10px; color: #b8cbbf; font-size: .85em; }
+.markdown-view .markdown-table-scroll { max-width: 100%; overflow: auto; overscroll-behavior: contain; border: 1px solid var(--border-soft, #ffffff19); border-radius: 3px; }
+.markdown-view table { width: max-content; min-width: 100%; border-collapse: collapse; border-spacing: 0; font-size: inherit; }
+.markdown-view .markdown-table-scroll > table { margin: 0; }
+.markdown-view :is(th, td) { padding: .5em .75em; border: 1px solid var(--border-soft, #ffffff19); background: none; color: inherit; text-align: left; text-transform: none; font-size: inherit; letter-spacing: normal; white-space: normal; overflow-wrap: normal; }
+.markdown-view th { background: #ffffff06; font-weight: 650; }
+.markdown-view tr:nth-child(even) { background: #ffffff03; }
+.markdown-view :is(th, td)[align="center"] { text-align: center; }
+.markdown-view :is(th, td)[align="right"] { text-align: right; }
+.markdown-view details { padding: .6em .8em; border: 1px solid var(--border-soft, #ffffff19); border-radius: 3px; }
+.markdown-view summary { cursor: pointer; font-weight: 600; }
+.markdown-view details[open] > summary { margin-bottom: .6em; }
+.markdown-view .footnotes { margin-top: 1.1em; padding-top: .75em; border-top: 1px solid var(--border-soft, #ffffff19); font-size: .9em; }
+.markdown-view .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
+.markdown-view .data-footnote-backref { margin-left: .35em; font-size: .9em; }
+.markdown-view sup { font-size: .78em; line-height: 0; }
+.markdown-view .mention { padding: 0 3px; border: 1px solid #7ea6ff38; border-radius: 3px; background: #7ea6ff29; color: #b9ceff; font-weight: 600; }
+.markdown-view .mention.self { border-color: #ffcc6659; background: #ffcc6633; color: #ffda8f; }
+.markdown-view .message-search-match { padding: 0; border-radius: 2px; background: #f6ce75; color: #20190c; }
+.markdown-view .markdown-image-card { display: inline-flex; flex-direction: column; align-items: flex-start; gap: 7px; box-sizing: border-box; width: min(100%, 30rem); max-width: 100%; margin: .3em 0; padding: 10px 12px; border: 1px solid var(--border-soft, #ffffff19); border-radius: 4px; background: #ffffff03; color: #c4b9d0; vertical-align: top; }
+.markdown-view .markdown-image-card > strong { color: #e1d6e9; }
+.markdown-view .markdown-image-host { color: #c3b2d1; font-size: .9em; }
+.markdown-view .markdown-image-notice { color: #b9afc4; font-size: .9em; line-height: 1.5; }
+.markdown-view .markdown-image-card img { display: block; width: auto; max-width: 100%; height: auto; max-height: 360px; border-radius: 3px; object-fit: contain; }
+.markdown-view .markdown-image-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; font-size: .9em; }
+.markdown-view .markdown-link-group { display: inline-flex; flex-direction: column; align-items: flex-start; max-width: 100%; gap: 4px; }
+.markdown-view .markdown-link-error { display: block; color: #efb6a6; font-size: .9em; }
+.markdown-view .hljs-comment, .markdown-view .hljs-quote { color: #9791a5; font-style: italic; }
+.markdown-view .hljs-keyword, .markdown-view .hljs-selector-tag, .markdown-view .hljs-literal { color: #d5a0ee; }
+.markdown-view .hljs-string, .markdown-view .hljs-regexp, .markdown-view .hljs-addition { color: #a5d4ad; }
+.markdown-view .hljs-number, .markdown-view .hljs-symbol, .markdown-view .hljs-bullet { color: #e8bd8d; }
+.markdown-view .hljs-title, .markdown-view .hljs-section, .markdown-view .hljs-selector-id { color: #a9c6f4; }
+.markdown-view .hljs-attr, .markdown-view .hljs-attribute, .markdown-view .hljs-property { color: #e7c693; }
+.markdown-view .hljs-type, .markdown-view .hljs-built_in, .markdown-view .hljs-variable, .markdown-view .hljs-template-variable { color: #efb4cd; }
+.markdown-view .hljs-meta, .markdown-view .hljs-doctag { color: #a7d5df; }
+.markdown-view .hljs-deletion { color: #eea5a5; background: #ed5d5d12; }
+.markdown-view .hljs-emphasis { font-style: italic; }
+.markdown-view .hljs-strong { font-weight: 700; }

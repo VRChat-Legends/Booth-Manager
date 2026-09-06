@@ -41,6 +41,24 @@ website and Unity SDK. It is built with Electron, React, Vite, and Three.js.
 - QR tools check contrast, quiet zones, and raster detail; PNG and SVG exports use the current payload and settings.
 - Texture Atlas serializes rebuilds, blocks stale exports, and displays measured material and mesh reductions with local GLB and PNG exports.
 
+## Team chat
+
+- Pop chat into one native desktop window. Dock from either window or close the pop-out to return it to Team Chat. Repeat requests focus the existing window instead of creating another.
+- The pop-out moves the same live chat view, preserving drafts, pending attachments, settings, reading position, and active transfers. The main window can navigate elsewhere while chat stays open.
+- Search rooms, star favorites, and keep separate text drafts for the session. Leaving docked Team Chat ends that session; changing pages while chat is detached does not. Drafts survive docking but not app restarts or sign-out.
+- Search message text, authors, and filenames within the latest 300 loaded messages, with All, Mentions, Files, and Mine filters. This is not a search of deleted or older server history.
+- View room members and shared files, insert mentions, copy messages, or add a plain-text quote to a draft. The member list does not claim to show online presence.
+- CommonMark and GitHub-flavored Markdown support headings, nested lists, tasks, tables, quotes, links, footnotes, and highlighted code blocks with copy controls. Mentions and search highlighting do not alter code or link destinations.
+- The composer has a formatting toolbar, selection-aware keyboard shortcuts, Markdown help, Write/Preview modes, and an auto-sizing text area. Ctrl+B, Ctrl+I, Ctrl+Shift+X, and Ctrl+backtick format text; Ctrl+K remains app navigation. Messages retain the service's 1200-character limit.
+- HTML is sanitized and unsafe links are blocked. External images require an explicit Load image action, which contacts the external host; disabling previews or using the global lounge prevents inline loading. Peer-file privacy controls remain separate.
+- Personal settings include compact or comfortable density, text size, avatars, timestamps, 12/24-hour time, role badges, message grouping, media previews, and automatic peer-image loading.
+- Choose Enter or Ctrl/Cmd+Enter to send. Shift+Enter inserts a newline. New messages preserve your reading position and offer a jump to the latest message.
+- Choose all messages, mentions, or mute, with separate room overrides and sound controls. Notifications cover only the selected room while Team Chat is open, docked or popped out; desktop alerts also require that chat window to be hidden or unfocused.
+- Desktop alerts and message previews are off by default. The app-wide sound and native-notification switches remain master controls.
+- Preferences are saved locally per account and service. Reset restores appearance and behavior without removing favorites or room overrides. Failed saves are shown instead of reported as successful.
+- Room locks and message deletion require confirmation and existing permissions. Personal mute does not lock a room. The global lounge remains text only, with peer transfers disabled there.
+- Failed polls retain the last successful snapshot. Switching rooms ignores old responses, and delayed sends cannot clear a newer draft or another room's draft.
+
 ## Peer Attachments
 
 Messages allow up to five attachments, each no larger than 500 MB. Transfers
@@ -59,6 +77,12 @@ npm run dev      # vite + electron with hot reload
 npm run build:icon
 npm test
 ```
+
+The unit tests cover analytics, QR exports, chat filtering, mentions, preference persistence, notifications, request races, atomic settings writes, Markdown safety, formatting selections, and native window lifecycle rules without accessing user data.
+
+Run `npm run test:desktop` with Vite running to exercise the real Electron pop-out at desktop sizes. After `npm run build:web`, setting `BOOTH_TEST_BUILT=1` runs the same test against the built renderer using file URLs instead. These tests use a separate temporary app profile and synthetic data, never the installed app or production messages. Screenshots are written to the system temporary directory under `booth-chat-desktop-previews`.
+
+The [desktop fixture](tests/ui/chatDesktop.html) loads the [synthetic bridge](tests/ui/chatFixture.js) before the real renderer. It supports failed or delayed requests and in-memory settings. All interaction and layout checks are desktop-only; no phone emulation is used.
 
 ## Build the installer
 

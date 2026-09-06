@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import * as api from "../lib/api.js";
 import * as audio from "../lib/audio.js";
 
-export default function SettingsPage({ cfg, refreshConfig, onLogout }) {
+export default function SettingsPage({ cfg, refreshConfig, onLogout, goTo }) {
   const [version, setVersion] = useState("");
   const [update, setUpdate] = useState(null);
   const [alleyBase, setAlleyBase] = useState(cfg.alleyApiBase || "");
@@ -47,7 +47,7 @@ export default function SettingsPage({ cfg, refreshConfig, onLogout }) {
         />
         <ToggleRow
           label="Ping sound"
-          desc="Plays a chime when someone @mentions you in team chat or replies to your support ticket"
+          desc="Allows chimes for the chat notification mode you choose and replies to your support tickets"
           value={cfg.pingSoundEnabled !== false}
           onChange={(v) => toggle("pingSoundEnabled", v)}
         />
@@ -57,10 +57,16 @@ export default function SettingsPage({ cfg, refreshConfig, onLogout }) {
         <h3>Notifications</h3>
         <ToggleRow
           label="Native notifications"
-          desc="Shows a Windows notification for staff popups when the app is in the tray, minimized, or unfocused. Clicking it brings the app back."
+          desc="Allows Windows notifications for staff popups and enabled chat alerts when the app is in the tray, minimized, or unfocused."
           value={cfg.nativeNotificationsEnabled !== false}
           onChange={(v) => toggle("nativeNotificationsEnabled", v)}
         />
+      </div>
+
+      <div className="card">
+        <h3>Team chat</h3>
+        <p className="muted small">Choose room notification overrides, message appearance, send shortcuts, and media privacy from Chat settings. Preferences stay with this account on this computer.</p>
+        <button onClick={() => goTo?.("chat")}>Open team chat</button>
       </div>
 
       <div className="card">

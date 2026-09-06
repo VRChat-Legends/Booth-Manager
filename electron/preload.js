@@ -1,5 +1,12 @@
 const { contextBridge, ipcRenderer, webUtils } = require("electron");
 
+function onChatEvent(channel, handler) {
+  if (typeof handler !== "function") return () => {};
+  const listener = (_event, payload) => handler(payload);
+  ipcRenderer.on(channel, listener);
+  return () => ipcRenderer.removeListener(channel, listener);
+}
+
 contextBridge.exposeInMainWorld("boothApi", {
   // config
   getConfig: () => ipcRenderer.invoke("config:get"),
@@ -7,6 +14,14 @@ contextBridge.exposeInMainWorld("boothApi", {
   getAppVersion: () => ipcRenderer.invoke("app:version"),
   openExternal: (url) => ipcRenderer.invoke("app:openExternal", url),
   uninstallApp: () => ipcRenderer.invoke("app:uninstall"),
+
+  chatWindowState: () => ipcRenderer.invoke("chat-window:state"),
+  chatWindowReady: () => ipcRenderer.invoke("chat-window:ready"),
+  focusChatWindow: () => ipcRenderer.invoke("chat-window:focus"),
+  finishChatDock: (options) => ipcRenderer.invoke("chat-window:docked", options),
+  abortChatWindow: () => ipcRenderer.invoke("chat-window:abort"),
+  onChatDockRequest: (handler) => onChatEvent("chat-window:dock-request", handler),
+  onChatWindowState: (handler) => onChatEvent("chat-window:state", handler),
 
   // alley service API
   alleyLogin: () => ipcRenderer.invoke("alley:login"),

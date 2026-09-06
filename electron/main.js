@@ -10,6 +10,8 @@ const { readConfig, writeConfig } = require("./configStore");
 const shareStore = require("./shareStore");
 const auth = require("./auth");
 const updater = require("./updater");
+const { createChatWindowManager } = require("./chatWindow");
+const { safeExternalUrl } = require("./externalLinks");
 
 protocol.registerSchemesAsPrivileged([{
   scheme: "booth-local",
@@ -28,14 +30,13 @@ if (process.platform === "win32") {
 }
 
 let mainWindow = null;
+let chatWindows = null;
 const incomingTransfers = new Map();
 const receivedFiles = new Map();
 const SESSION_ID_PATTERN = /^[A-Za-z0-9_-]{8,80}$/;
 const RECEIVED_ROOT = () => path.join(app.getPath("temp"), "vrchat-legends-booth-manager", String(process.pid));
 
-// Older service builds did not return a user object, but the SDK JWT itself
-// carries identity. Decode it locally so the app never shows a blank user and
-// the peer file service always knows who we are.
+// Older services keep identity only in the SDK token.
 function identityFromToken(token) {
   try {
     const payload = JSON.parse(Buffer.from(String(token).split(".")[1], "base64url").toString("utf8"));
@@ -70,15 +71,9 @@ function alleyBase() {
   return String(readConfig().alleyApiBase || "https://alley.vrchatlegends.com").replace(/\/$/, "");
 }
 
-// ------------------------------------------------------------------
-// HTTP proxy helpers (renderer never talks to the network directly,
-// so tokens stay in the main process and CORS never applies)
-// ------------------------------------------------------------------
-
 const BLOCKED_HOSTS = /^(localhost|127\.|0\.|10\.|192\.168\.|169\.254\.|\[?::1)/i;
 
-// A compromised renderer must never be able to point these helpers at
-// file:// paths, other protocols, or a different origin than the service.
+// Proxy paths must stay on the approved origin and protocol.
 function resolveProxyUrl(base, pathName) {
   const raw = String(pathName || "");
   if (base) {
@@ -133,10 +128,6 @@ async function proxyFetch(base, token, pathName, options = {}) {
   }
 }
 
-// ------------------------------------------------------------------
-// IPC: config
-// ------------------------------------------------------------------
-
 ipcMain.handle("config:get", () => readConfig());
 ipcMain.handle("config:save", (_e, patch) => {
   const result = writeConfig(patch);
@@ -145,22 +136,27 @@ ipcMain.handle("config:save", (_e, patch) => {
 });
 ipcMain.handle("app:version", () => app.getVersion());
 ipcMain.handle("app:openExternal", async (_e, url) => {
-  const s = String(url || "");
-  if (/^https?:\/\//i.test(s)) {
-    await shell.openExternal(s);
-    return;
-  }
-  // the only non-http scheme allowed: the Creator Companion deep link, and
-  // only when it points at our own VPM listing
-  if (/^vcc:\/\/vpm\/addRepo\?url=/i.test(s)) {
-    const repo = decodeURIComponent(s.slice(s.indexOf("url=") + 4));
-    if (/^https:\/\/vrchatlegends\.com\//i.test(repo)) await shell.openExternal(s);
-  }
+  const safe = safeExternalUrl(url);
+  if (!safe) return { ok: false, error: "This link is not allowed." };
+  await shell.openExternal(safe);
+  return { ok: true };
 });
 
-// ------------------------------------------------------------------
-// IPC: alley service API (SDK JWT)
-// ------------------------------------------------------------------
+for (const [channel, method] of Object.entries({
+  "chat-window:state": "getState", "chat-window:ready": "markReady", "chat-window:focus": "focus",
+  "chat-window:docked": "finishDock", "chat-window:abort": "abort"
+})) {
+  ipcMain.handle(channel, (event, options) => {
+    if (!mainWindow || event.sender !== mainWindow.webContents || event.senderFrame !== event.sender.mainFrame) return { ok: false };
+    return chatWindows?.[method](options) || { ok: false };
+  });
+}
+
+function dialogParent(event) {
+  const focused = BrowserWindow.getFocusedWindow();
+  if (focused && (focused === mainWindow || focused === chatWindows?.getWindow())) return focused;
+  return BrowserWindow.fromWebContents(event.sender) || mainWindow;
+}
 
 ipcMain.handle("alley:login", async () => {
   const result = await auth.loginAlley(alleyBase());
@@ -203,8 +199,7 @@ ipcMain.handle("alley:request", async (_e, pathName, options) => {
   if (pathName === "/api/auth/me" && res.status === 200 && res.data) {
     const community = res.data.community || null;
     const user = res.data.user || null;
-    // Cosmetic identity fields (avatar, username, logo) fall back to the last
-    // known value instead of blanking when the service omits them.
+    // Preserve cosmetic fields when older services omit them.
     writeConfig({
       alleyStaff: res.data.staff === true,
       alleyRole: String(res.data.role || ""),
@@ -242,7 +237,7 @@ ipcMain.handle("alley:download", async (_e, pathName, defaultName) => {
   if (!isBooth && !isBroadcastAsset) {
     return { ok: false, error: "That download is not allowed." };
   }
-  const picked = await dialog.showSaveDialog(mainWindow, {
+  const picked = await dialog.showSaveDialog(dialogParent(_e), {
     defaultPath: String(defaultName || (isBooth ? "booth-backup.zip" : "attachment")),
     filters: isBooth
       ? [{ name: "Booth backup", extensions: ["zip"] }]
@@ -286,10 +281,6 @@ ipcMain.handle("alley:image", async (_e, pathOrUrl) => {
   return await proxyFetch(alleyBase(), cfg.alleyToken, p, { binary: true });
 });
 
-// ------------------------------------------------------------------
-// IPC: GitHub (public repo metadata for the changelog + bug tracker)
-// ------------------------------------------------------------------
-
 const GITHUB_REPO = "VRChat-Legends/Booth-Manager";
 const GITHUB_RELEASES_PATH = `/repos/${GITHUB_REPO}/releases?per_page=20`;
 const GITHUB_ISSUES_PATH = `/repos/${GITHUB_REPO}/issues?state=all&per_page=50`;
@@ -299,9 +290,7 @@ const GITHUB_TTL_MS = 10 * 60 * 1000;
 const githubCache = new Map();
 const githubCacheFile = () => path.join(app.getPath("userData"), "github-cache.json");
 
-// The Alley backend keeps an authenticated, ETag-revalidated GitHub cache
-// shared by every client; direct GitHub is only the fallback so the app
-// still works against older service builds or while signed out.
+// Prefer the shared Alley cache; direct GitHub keeps older servers usable.
 const GITHUB_BACKEND_KEYS = {
   [GITHUB_ISSUES_PATH]: "bm-issues",
   [GITHUB_RELEASES_PATH]: "bm-releases",
@@ -349,8 +338,7 @@ async function githubFetch(apiPath) {
   }
 }
 
-// Stale-while-revalidate: any cached copy (memory or disk) renders the page
-// instantly; an expired copy kicks off a background refresh for next time.
+// Return stale cache entries immediately while refreshing in the background.
 async function githubGet(apiPath) {
   let cached = githubCache.get(apiPath);
   if (!cached) {
@@ -372,10 +360,6 @@ ipcMain.handle("github:issues", async () => githubGet(GITHUB_ISSUES_PATH));
 ipcMain.handle("github:sdkReleases", async () => githubGet(GITHUB_SDK_RELEASES_PATH));
 ipcMain.handle("github:sdkReadme", async () => githubGet(GITHUB_SDK_README_PATH));
 
-// ------------------------------------------------------------------
-// IPC: native notifications (staff popups while unfocused or in tray)
-// ------------------------------------------------------------------
-
 ipcMain.handle("notify:show", (_e, payload) => {
   if (readConfig().nativeNotificationsEnabled === false) return { ok: false, muted: true };
   if (!Notification.isSupported()) return { ok: false, error: "Notifications are not supported here." };
@@ -392,12 +376,8 @@ ipcMain.handle("notify:show", (_e, payload) => {
   return { ok: true };
 });
 
-// ------------------------------------------------------------------
-// IPC: file dialogs + disk io for standee outputs
-// ------------------------------------------------------------------
-
 ipcMain.handle("dialog:openImage", async (_e, opts) => {
-  const res = await dialog.showOpenDialog(mainWindow, {
+  const res = await dialog.showOpenDialog(dialogParent(_e), {
     properties: opts && opts.multi ? ["openFile", "multiSelections"] : ["openFile"],
     filters: [{ name: "Images", extensions: ["png", "jpg", "jpeg", "webp"] }]
   });
@@ -410,8 +390,8 @@ ipcMain.handle("dialog:openImage", async (_e, opts) => {
   return { ok: true, files };
 });
 
-ipcMain.handle("dialog:openSharedFiles", async () => {
-  const res = await dialog.showOpenDialog(mainWindow, {
+ipcMain.handle("dialog:openSharedFiles", async (_e) => {
+  const res = await dialog.showOpenDialog(dialogParent(_e), {
     properties: ["openFile", "multiSelections"],
     filters: [
       { name: "Images, videos, and files", extensions: ["png", "jpg", "jpeg", "gif", "webp", "avif", "bmp", "mp4", "webm", "mov", "mkv", "pdf", "zip", "txt", "json", "unitypackage", "fbx", "obj", "glb", "gltf"] },
@@ -423,15 +403,13 @@ ipcMain.handle("dialog:openSharedFiles", async () => {
   return { ok: result.files.length > 0, ...result };
 });
 
-ipcMain.handle("dialog:openSharedFolder", async () => {
-  const res = await dialog.showOpenDialog(mainWindow, { properties: ["openDirectory"] });
+ipcMain.handle("dialog:openSharedFolder", async (_e) => {
+  const res = await dialog.showOpenDialog(dialogParent(_e), { properties: ["openDirectory"] });
   if (res.canceled || !res.filePaths.length) return { ok: false, canceled: true };
   return shareStore.addFolder(res.filePaths[0]);
 });
 
-// drag and drop lands here: the renderer resolves dropped File objects to
-// absolute paths (webUtils) and we run them through the same shareStore
-// validation the pickers use. Folders become folder shares like the picker.
+// Dropped paths pass through the same validation as native file pickers.
 ipcMain.handle("shares:addPaths", (_e, paths) => {
   const list = (Array.isArray(paths) ? paths : [])
     .map((p) => String(p || ""))
@@ -468,8 +446,7 @@ ipcMain.handle("shares:addPaths", (_e, paths) => {
   return { ok: files.length > 0 || folders.length > 0, files, folders, rejected };
 });
 
-// dropped image -> base64 for the logo uploaders; same shape openImageDialog
-// returns so the pages reuse their existing upload paths
+// Match the picker response so dropped images use the same upload path.
 ipcMain.handle("file:readImage", (_e, filePath) => {
   const p = String(filePath || "");
   try {
@@ -545,8 +522,8 @@ function readAtlasPackage(inputPaths) {
   return { ok: true, files, totalBytes };
 }
 
-ipcMain.handle("dialog:openAtlasPackage", async () => {
-  const result = await dialog.showOpenDialog(mainWindow, {
+ipcMain.handle("dialog:openAtlasPackage", async (_e) => {
+  const result = await dialog.showOpenDialog(dialogParent(_e), {
     properties: ["openFile", "multiSelections"],
     filters: [
       { name: "OBJ model package", extensions: ["obj", "mtl", "png", "jpg", "jpeg", "webp"] },
@@ -559,10 +536,9 @@ ipcMain.handle("dialog:openAtlasPackage", async () => {
 
 ipcMain.handle("atlas:readPackage", (_event, paths) => readAtlasPackage(paths));
 
-// staff popup attachments upload straight from disk so the renderer never
-// holds the bytes; the service enforces staff auth and the 40 MB cap again
-ipcMain.handle("alley:broadcastAssets", async () => {
-  const res = await dialog.showOpenDialog(mainWindow, { properties: ["openFile", "multiSelections"] });
+// Staff popup assets upload directly from disk with server-side permission checks.
+ipcMain.handle("alley:broadcastAssets", async (_e) => {
+  const res = await dialog.showOpenDialog(dialogParent(_e), { properties: ["openFile", "multiSelections"] });
   if (res.canceled || !res.filePaths.length) return { ok: false, assets: [], rejected: [] };
   const cfg = readConfig();
   const assets = [];
@@ -674,7 +650,7 @@ ipcMain.handle("incoming:cancel", (_e, sessionId) => {
 ipcMain.handle("incoming:save", async (_e, sessionId) => {
   const received = receivedFiles.get(String(sessionId || ""));
   if (!received || !fs.existsSync(received.path)) return { ok: false, error: "Download the peer file again first." };
-  const picked = await dialog.showSaveDialog(mainWindow, { defaultPath: received.name });
+  const picked = await dialog.showSaveDialog(dialogParent(_e), { defaultPath: received.name });
   if (picked.canceled || !picked.filePath) return { ok: false };
   try {
     fs.copyFileSync(received.path, picked.filePath);
@@ -686,7 +662,7 @@ ipcMain.handle("incoming:save", async (_e, sessionId) => {
 });
 
 ipcMain.handle("dialog:saveFile", async (_e, opts) => {
-  const res = await dialog.showSaveDialog(mainWindow, {
+  const res = await dialog.showSaveDialog(dialogParent(_e), {
     defaultPath: opts && opts.defaultName ? opts.defaultName : "output",
     filters: opts && Array.isArray(opts.filters) && opts.filters.length
       ? opts.filters
@@ -696,8 +672,8 @@ ipcMain.handle("dialog:saveFile", async (_e, opts) => {
   return { ok: true, path: res.filePath };
 });
 
-ipcMain.handle("dialog:pickFolder", async () => {
-  const res = await dialog.showOpenDialog(mainWindow, { properties: ["openDirectory", "createDirectory"] });
+ipcMain.handle("dialog:pickFolder", async (_e) => {
+  const res = await dialog.showOpenDialog(dialogParent(_e), { properties: ["openDirectory", "createDirectory"] });
   if (res.canceled || res.filePaths.length === 0) return { ok: false };
   return { ok: true, path: res.filePaths[0] };
 });
@@ -726,18 +702,10 @@ ipcMain.handle("fs:showInFolder", async (_e, filePath) => {
   try { shell.showItemInFolder(String(filePath || "")); } catch { /* ignore */ }
 });
 
-// ------------------------------------------------------------------
-// IPC: updates
-// ------------------------------------------------------------------
-
 ipcMain.handle("updates:getState", () => updater.getState());
 ipcMain.handle("updates:check", async () => await updater.check());
 ipcMain.handle("updates:download", async () => await updater.download());
 ipcMain.handle("updates:install", () => updater.install());
-
-// ------------------------------------------------------------------
-// IPC: uninstall
-// ------------------------------------------------------------------
 
 ipcMain.handle("app:uninstall", async () => {
   if (app.isPackaged) {
@@ -753,10 +721,6 @@ ipcMain.handle("app:uninstall", async () => {
   await shell.openExternal("ms-settings:appsfeatures");
   return { ok: true, fallback: true };
 });
-
-// ------------------------------------------------------------------
-// window
-// ------------------------------------------------------------------
 
 let tray = null;
 let isQuitting = false;
@@ -815,15 +779,13 @@ function createWindow() {
   Menu.setApplicationMenu(null);
 
   mainWindow.once("ready-to-show", () => { if (!startHidden) mainWindow.show(); });
-  // Safety net: if the renderer stalls (e.g. vite optimizing deps on first run),
-  // show the window anyway so the app never appears to silently not launch.
+  // Show something even if first-run renderer startup stalls.
   setTimeout(() => {
     if (!startHidden && mainWindow && !mainWindow.isDestroyed() && !mainWindow.isVisible()) mainWindow.show();
   }, 5000);
 
   if (process.env.VITE_DEV_SERVER === "1" || !app.isPackaged) {
-    // Retry: Electron's network service can crash-restart on cold start, and vite
-    // may still be optimizing deps; a single failed load left a hidden blank window.
+    // The dev server or Electron network service may not be ready on the first attempt.
     const devUrl = "http://127.0.0.1:5175";
     let attempts = 0;
     const tryLoad = () => {
@@ -838,8 +800,16 @@ function createWindow() {
     mainWindow.loadFile(path.join(__dirname, "..", "dist", "index.html"));
   }
 
-  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    if (/^https?:\/\//i.test(url)) shell.openExternal(url);
+  chatWindows = createChatWindowManager({
+    owner: mainWindow, icon: path.join(__dirname, "..", "assets", "app-icon.ico"),
+    canOpen: () => Boolean(readConfig().alleyToken), isQuitting: () => isQuitting, showMain: showMainWindow
+  });
+  mainWindow.once("closed", () => { chatWindows?.dispose(); chatWindows = null; mainWindow = null; });
+  mainWindow.webContents.setWindowOpenHandler((details) => {
+    const chat = chatWindows.handleOpen(details);
+    if (chat) return chat;
+    const safe = safeExternalUrl(details.url);
+    if (safe) shell.openExternal(safe).catch(() => {});
     return { action: "deny" };
   });
 
@@ -852,7 +822,7 @@ function createWindow() {
   // Run in tray: closing the window hides it instead of quitting.
   mainWindow.on("close", (event) => {
     if (isQuitting) return;
-    if (readConfig().runInTray === false) return;
+    if (readConfig().runInTray === false) { isQuitting = true; app.quit(); return; }
     event.preventDefault();
     mainWindow.hide();
     if (!trayBalloonShown && tray && process.platform === "win32") {

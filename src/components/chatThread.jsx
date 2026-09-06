@@ -1,10 +1,9 @@
-// Shared chat thread rendering: message rows, peer-served attachments, and
-// the folder viewer. Team chat and support ticket threads both render
-// through this component so the attachment pipeline stays single-source.
-import { useEffect, useRef, useState } from "react";
+// shared message rows and peer attachments
+import { Fragment, useEffect, useRef, useState } from "react";
 import {
   AlertTriangle,
   ChevronRight,
+  Copy,
   Download,
   File,
   Folder,
@@ -14,13 +13,19 @@ import {
   Lock,
   Music,
   Play,
+  Quote,
   Trash2,
   Video,
   X
 } from "lucide-react";
 import * as api from "../lib/api.js";
+import { canGroupMessages, formatChatTime, isPinged, messageDayKey, messageTextParts } from "../lib/chatMessages.mjs";
+import { MarkdownView } from "../lib/markdown.jsx";
 import peerFiles from "../lib/peerFiles.js";
-import ModalPortal from "./ModalPortal.jsx";
+import ModalPortal, { usePortalDocument } from "./ModalPortal.jsx";
+import "../message-refinements.css";
+
+export { isPinged } from "../lib/chatMessages.mjs";
 
 export const RISKY_FILE_PATTERN = /\.(exe|msi|bat|cmd|ps1|psm1|vbs|vbe|js|jse|jar|scr|com|dll|apk|reg|lnk|hta|wsf|wsh|gadget)$/i;
 
@@ -32,33 +37,15 @@ export function iconFor(kind) {
   return <File size={13} />;
 }
 
-function escapeRegExp(value) {
-  return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-export function isPinged(body, selfName) {
-  if (!body || !selfName) return false;
-  return new RegExp(`@${escapeRegExp(selfName)}(?![\\w])`, "i").test(body);
-}
-
-/** Highlights @mentions of known members inside a message body. */
-export function renderBody(body, members, selfName) {
-  const names = (members || []).map((member) => member.name).filter(Boolean).sort((a, b) => b.length - a.length);
-  if (!names.length || !body.includes("@")) return body;
-  const pattern = new RegExp(`@(${names.map(escapeRegExp).join("|")})`, "gi");
-  const parts = [];
-  let last = 0;
-  let match;
-  let key = 0;
-  while ((match = pattern.exec(body)) !== null) {
-    if (match.index > last) parts.push(body.slice(last, match.index));
-    const self = selfName && match[1].toLowerCase() === selfName.toLowerCase();
-    parts.push(<span key={key++} className={`mention${self ? " self" : ""}`}>@{match[1]}</span>);
-    last = match.index + match[0].length;
-  }
-  if (!parts.length) return body;
-  if (last < body.length) parts.push(body.slice(last));
-  return parts;
+export function renderBody(body, members, selfName, searchQuery = "") {
+  return messageTextParts(body, members, selfName, searchQuery).map((segment, index) => {
+    const content = segment.parts.map((part, partIndex) => part.match
+      ? <mark key={partIndex} className="message-search-match">{part.text}</mark>
+      : part.text);
+    return segment.mention
+      ? <span key={index} className={`mention${segment.self ? " self" : ""}`}>{content}</span>
+      : <Fragment key={index}>{content}</Fragment>;
+  });
 }
 
 export function MessageAvatar({ url, name }) {
@@ -69,35 +56,34 @@ export function MessageAvatar({ url, name }) {
 }
 
 function AutoPauseVideo({ src }) {
+  const owner = usePortalDocument();
   const ref = useRef(null);
   // pause playback when the video scrolls out of view
   useEffect(() => {
     const el = ref.current;
-    if (!el || typeof IntersectionObserver === "undefined") return undefined;
-    const observer = new IntersectionObserver((entries) => {
+    if (!el || !owner.defaultView?.IntersectionObserver) return undefined;
+    const observer = new owner.defaultView.IntersectionObserver((entries) => {
       for (const entry of entries) {
         if (!entry.isIntersecting && !el.paused) el.pause();
       }
     }, { threshold: 0.2 });
     observer.observe(el);
     return () => observer.disconnect();
-  }, []);
+  }, [owner]);
   return <video ref={ref} src={src} controls preload="metadata" />;
 }
 
-export function Attachment({ attachment, transfer, communityId, own, peerDisabled }) {
+export function Attachment({ attachment, transfer, communityId, own, peerDisabled, showMediaPreviews = true }) {
   const request = () => peerFiles.request(attachment, communityId);
   const pending = ["requesting", "connecting", "transferring"].includes(transfer?.status);
   const ready = transfer?.status === "ready" && transfer.localUrl;
   const failed = transfer?.status === "error";
-  // Own files never depend on the server availability flag: they either
-  // resolve from disk or the local copy itself is gone.
+  // own files resolve from disk, not the server availability flag
   const missing = !ready && !pending && (own
     ? transfer?.status === "unavailable"
     : (!attachment.available || transfer?.status === "unavailable"));
 
-  // Rooms where peer transfers are shut off (the Alley Lounge): show the
-  // file info but never offer a download that would broker a connection.
+  // disabled rooms must not broker peer connections
   if (peerDisabled && !ready) {
     return (
       <div className="attachment-missing attachment-disabled">
@@ -114,15 +100,15 @@ export function Attachment({ attachment, transfer, communityId, own, peerDisable
     return <FolderAttachment attachment={attachment} communityId={communityId} own={own} />;
   }
 
-  if (attachment.kind === "image" && ready) {
+  if (showMediaPreviews && attachment.kind === "image" && ready) {
     return <div className="attachment-media"><img src={transfer.localUrl} alt={attachment.name} /><AttachmentCaption attachment={attachment} transfer={transfer} own={own} /></div>;
   }
 
-  if (attachment.kind === "video" && ready) {
+  if (showMediaPreviews && attachment.kind === "video" && ready) {
     return <div className="attachment-media"><AutoPauseVideo src={transfer.localUrl} /><AttachmentCaption attachment={attachment} transfer={transfer} own={own} /></div>;
   }
 
-  if (attachment.kind === "audio" && ready) {
+  if (showMediaPreviews && attachment.kind === "audio" && ready) {
     return (
       <div className="attachment-audio">
         <span className="attachment-file-icon"><Music size={19} /></span>
@@ -166,8 +152,6 @@ function AttachmentCaption({ attachment, transfer, own }) {
   return <div className="attachment-caption"><span><strong>{attachment.name}</strong><small>{api.formatBytes(attachment.size)}</small></span>{!own && <button className="icon-button small" title="Save file" onClick={() => peerFiles.save(attachment.id)}><Download size={14} /></button>}{own && <span className="pill teal">LOCAL</span>}</div>;
 }
 
-/* ---------- shared folders ---------- */
-
 function FolderAttachment({ attachment, communityId, own }) {
   const [open, setOpen] = useState(false);
   const offline = !own && !attachment.available;
@@ -188,8 +172,7 @@ function FolderAttachment({ attachment, communityId, own }) {
   );
 }
 
-/** In-app file viewer for a shared folder: browse subfolders, download
- * individual files over the same peer channel as single attachments. */
+// folders use the same peer channel as single files
 function FolderViewer({ attachment, communityId, own, onClose }) {
   const [transfers, setTransfers] = useState({});
   const [dir, setDir] = useState("");
@@ -303,12 +286,68 @@ function FolderViewer({ attachment, communityId, own, onClose }) {
   );
 }
 
-/* ---------- message list ---------- */
+function MessageTimestamp({ iso, timeFormat, grouped = false }) {
+  const label = formatChatTime(iso, timeFormat);
+  if (!label) return null;
+  return (
+    <time
+      className={`message-time${grouped ? " message-time-grouped" : ""}`}
+      dateTime={iso}
+      title={new Date(iso).toLocaleString(undefined, { dateStyle: "full", timeStyle: "long" })}
+    >{label}</time>
+  );
+}
 
-/**
- * The message rows themselves: grouping, author meta, mention highlighting,
- * attachments, and the optional shift-click delete affordance.
- */
+async function runMessageAction(callback, value, onHint) {
+  try {
+    await callback?.(value);
+  } catch {
+    try {
+      await onHint?.("That message action could not be completed. Please try again.");
+    } catch {}
+  }
+}
+
+function MessageActions({ message, deletable, onQuote, onCopy, onRequestDelete, onDelete, onHint }) {
+  const canQuote = typeof onQuote === "function";
+  const canCopy = typeof onCopy === "function";
+  const confirmDelete = typeof onRequestDelete === "function";
+  const deleteLabel = confirmDelete ? "Delete message" : "Hold Shift and click to delete";
+  const deleteButton = deletable && (
+    <button
+      type="button"
+      className="message-delete"
+      title={deleteLabel}
+      aria-label={deleteLabel}
+      onClick={(clickEvent) => {
+        if (confirmDelete) {
+          return runMessageAction(onRequestDelete, message, onHint);
+        }
+        if (!clickEvent.shiftKey) {
+          return runMessageAction(onHint, "Hold Shift and click the trash icon to delete a message.");
+        }
+        return runMessageAction(onDelete, message, onHint);
+      }}
+    ><Trash2 size={13} aria-hidden="true" /></button>
+  );
+  if (!canQuote && !canCopy) return deleteButton;
+  return (
+    <div className="message-actions">
+      {canQuote && (
+        <button type="button" className="message-action" title="Quote message" aria-label="Quote message" onClick={() => runMessageAction(onQuote, message, onHint)}>
+          <Quote size={13} aria-hidden="true" />
+        </button>
+      )}
+      {canCopy && (
+        <button type="button" className="message-action" title="Copy message" aria-label="Copy message" onClick={() => runMessageAction(onCopy, message, onHint)}>
+          <Copy size={13} aria-hidden="true" />
+        </button>
+      )}
+      {deleteButton}
+    </div>
+  );
+}
+
 export function MessageList({
   messages,
   ownId,
@@ -320,64 +359,88 @@ export function MessageList({
   canDelete,
   onDelete,
   onHint,
-  peerDisabled = false
+  peerDisabled = false,
+  preferences,
+  searchQuery = "",
+  onQuote,
+  onCopy,
+  onRequestDelete,
+  textOnly = false
 }) {
+  const hasPreferences = preferences != null;
+  const showAvatars = preferences?.showAvatars !== false;
+  const showTimestamps = preferences?.showTimestamps !== false;
+  const showRoleBadges = preferences?.showRoleBadges !== false;
+  const showMediaPreviews = preferences?.showMediaPreviews !== false && !textOnly;
   return messages.map((message, index) => {
+    const previous = messages[index - 1];
+    const day = hasPreferences ? messageDayKey(message.createdAt) : "";
+    const dayLabel = day ? new Date(message.createdAt).toLocaleDateString(undefined, { dateStyle: "full" }) : "";
+    const separator = day && day !== messageDayKey(previous?.createdAt) && (
+      <div className="message-day-separator" role="separator" aria-label={dayLabel}>
+        <time dateTime={day}>{dayLabel}</time>
+      </div>
+    );
     if (message.authorRole === "system") {
       return (
-        <div key={message.id} className={`ticket-system-event${message.action ? ` ${message.action}` : ""}`}>
-          <span className="ticket-system-line" />
-          <div>
-            <strong>{message.body}</strong>
-            <time dateTime={message.createdAt}>{api.formatDate(message.createdAt)}</time>
+        <Fragment key={message.id}>
+          {separator}
+          <div data-message-id={message.id} className={`ticket-system-event${message.action ? ` ${message.action}` : ""}`}>
+            <span className="ticket-system-line" />
+            <div>
+              <strong>{searchQuery ? renderBody(message.body, members, selfName, searchQuery) : message.body}</strong>
+              {showTimestamps && (hasPreferences
+                ? <MessageTimestamp iso={message.createdAt} timeFormat={preferences.timeFormat} />
+                : <time dateTime={message.createdAt}>{api.formatDate(message.createdAt)}</time>)}
+            </div>
+            <span className="ticket-system-line" />
           </div>
-          <span className="ticket-system-line" />
-        </div>
+        </Fragment>
       );
     }
     const own = String(message.authorId) === ownId;
-    const previous = messages[index - 1];
-    const grouped = previous?.authorId === message.authorId
-      && Date.parse(message.createdAt) - Date.parse(previous.createdAt) < 5 * 60 * 1000;
+    const elapsed = Date.parse(message.createdAt) - Date.parse(previous?.createdAt);
+    const grouped = hasPreferences ? canGroupMessages(previous, message, preferences.groupMessages)
+      : previous?.authorRole !== "system" && previous?.authorId === message.authorId
+        && elapsed >= 0 && elapsed < 5 * 60 * 1000;
     const avatarUrl = message.authorAvatarUrl || memberAvatars?.get(String(message.authorId)) || "";
     const deletable = canDelete ? canDelete(message) : false;
     return (
-      <div key={message.id} className={`message${own ? " own" : ""}${grouped ? " grouped" : ""}`}>
-        {!grouped && <MessageAvatar url={avatarUrl} name={message.authorName} />}
-        <div className="message-content">
-          {!grouped && <div className="message-meta"><strong>{own ? "You" : message.authorName}</strong><span className="author-role">{message.authorRole}</span><span>{api.formatDate(message.createdAt)}</span></div>}
-          {message.body && (
-            <div className={`message-bubble${isPinged(message.body, selfName) && !own ? " pinged" : ""}`}>
-              {renderBody(message.body, members, selfName)}
-            </div>
-          )}
-          {(message.attachments || []).map((attachment) => (
-            <Attachment
-              key={attachment.id}
-              attachment={attachment}
-              transfer={transfers[attachment.id]}
-              communityId={roomId}
-              own={String(attachment.authorId) === ownId}
-              peerDisabled={peerDisabled}
-            />
-          ))}
+      <Fragment key={message.id}>
+        {separator}
+        <div data-message-id={message.id} className={`message${own ? " own" : ""}${grouped ? " grouped" : ""}${!showAvatars ? " message-no-avatars" : ""}`}>
+          {showAvatars && !grouped && <MessageAvatar url={avatarUrl} name={message.authorName} />}
+          <div className="message-content">
+            {!grouped && (
+              <div className="message-meta">
+                <strong>{searchQuery ? renderBody(own ? "You" : message.authorName, [], "", searchQuery) : own ? "You" : message.authorName}</strong>
+                {showRoleBadges && <span className="author-role">{message.authorRole}</span>}
+                {showTimestamps && (hasPreferences
+                  ? <MessageTimestamp iso={message.createdAt} timeFormat={preferences.timeFormat} />
+                  : <span>{api.formatDate(message.createdAt)}</span>)}
+              </div>
+            )}
+            {message.body && (
+              <div className={`message-bubble${isPinged(message.body, selfName) && !own ? " pinged" : ""}`} style={{ borderRadius: 4, maxWidth: "100%" }}>
+                <MarkdownView text={message.body} members={members} selfName={selfName} searchQuery={searchQuery} showMediaPreviews={showMediaPreviews} textOnly={textOnly} />
+              </div>
+            )}
+            {(message.attachments || []).map((attachment) => (
+              <Attachment
+                key={attachment.id}
+                attachment={attachment}
+                transfer={transfers[attachment.id]}
+                communityId={roomId}
+                own={String(attachment.authorId) === ownId}
+                peerDisabled={peerDisabled}
+                showMediaPreviews={showMediaPreviews}
+              />
+            ))}
+            {hasPreferences && grouped && showTimestamps && <MessageTimestamp iso={message.createdAt} timeFormat={preferences.timeFormat} grouped />}
+          </div>
+          <MessageActions message={message} deletable={deletable} onQuote={onQuote} onCopy={onCopy} onRequestDelete={onRequestDelete} onDelete={onDelete} onHint={onHint} />
         </div>
-        {deletable && (
-          <button
-            className="message-delete"
-            title="Hold Shift and click to delete"
-            onClick={(clickEvent) => {
-              if (!clickEvent.shiftKey) {
-                onHint?.("Hold Shift and click the trash icon to delete a message.");
-                return;
-              }
-              onDelete?.(message);
-            }}
-          >
-            <Trash2 size={13} />
-          </button>
-        )}
-      </div>
+      </Fragment>
     );
   });
 }

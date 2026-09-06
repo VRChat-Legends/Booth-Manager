@@ -1,0 +1,17 @@
+.chat-dock[hidden] { display: none; }
+.chat-dock-home:empty { display: none; }
+.chat-portal-root { min-width: 0; }
+.chat-popout-body { margin: 0; min-width: 940px; overflow: hidden; background: #100e15; }
+.chat-popout-body > .chat-portal-root { height: 100vh; padding: 18px 20px 20px; }
+.chat-popout-body .chat-workspace { height: 100%; min-height: 0; max-width: none; }
+.chat-popout-body .chat-workspace-heading h1 { font-size: 22px; }
+.chat-popout-body .chat-workspace-heading p { font-size: 11px; }
+.chat-workspace-window-actions { display: flex; align-items: center; flex-shrink: 0; gap: 8px; }
+.chat-workspace-window-actions button { min-height: 36px; gap: 7px; font-size: 12px; }
+.chat-detached-placeholder { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; min-height: calc(100vh - 180px); text-align: center; padding: 40px; }
+.chat-detached-icon { display: grid; place-items: center; height: 62px; width: 62px; border: 1px solid #bca2d242; background: #bca2d20c; border-radius: 6px; color: #dab8e9; }
+.chat-detached-placeholder .eyebrow { margin-top: 8px; font-size: 10px; letter-spacing: .13em; color: #b599c4; }
+.chat-detached-placeholder h1 { margin: 0; color: #ece1f4; font-size: 23px; font-weight: 550; }
+.chat-detached-placeholder p { max-width: 520px; margin: 0; color: #b6a6bf; line-height: 1.8; font-size: 13px; }
+.chat-detached-placeholder > div:last-child { display: flex; gap: 10px; margin-top: 10px; }
+.chat-detached-placeholder button { gap: 8px; font-size: 12px; border-radius: 4px; }

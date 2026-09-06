@@ -8,6 +8,15 @@ export const getAppVersion = () => api.getAppVersion();
 export const openExternal = (url) => api.openExternal(url);
 export const uninstallApp = () => api.uninstallApp();
 
+export const chatWindow = {
+  ready: api.chatWindowReady,
+  focus: api.focusChatWindow,
+  finishDock: api.finishChatDock,
+  abort: api.abortChatWindow,
+  onDockRequest: api.onChatDockRequest,
+  onState: api.onChatWindowState
+};
+
 // alley service
 export const alleyLogin = () => api.alleyLogin();
 export const alleyLogout = () => api.alleyLogout();

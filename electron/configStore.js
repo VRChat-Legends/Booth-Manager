@@ -22,6 +22,7 @@ const DEFAULTS = {
   alleyAvatarUrl: "",
   seenBoothUploadIds: [],
   seenBoothUploadsInitialized: false,
+  chatProfiles: {},
   // preferences
   sfxEnabled: true,
   pingSoundEnabled: true,
@@ -55,13 +56,18 @@ function readConfig() {
 
 function writeConfig(patch) {
   const next = withoutLegacyFields({ ...readConfig(), ...(patch && typeof patch === "object" ? patch : {}) });
-  cache = next;
+  const temporary = `${FILE()}.tmp`;
   try {
     fs.mkdirSync(path.dirname(FILE()), { recursive: true });
-    fs.writeFileSync(FILE(), JSON.stringify(next, null, 2), "utf8");
+    fs.writeFileSync(temporary, JSON.stringify(next, null, 2), "utf8");
+    fs.renameSync(temporary, FILE());
   } catch {
-    /* non-fatal */
+    try { fs.unlinkSync(temporary); } catch {}
+    if (Object.prototype.hasOwnProperty.call(patch || {}, "chatProfiles")) {
+      throw new Error("Chat preferences could not be saved to disk. Check free space and folder permissions, then try again.");
+    }
   }
+  cache = next;
   return { ...next };
 }
 

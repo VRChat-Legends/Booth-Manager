@@ -30,6 +30,8 @@ import peerFiles from "./lib/peerFiles.js";
 import LoginPage from "./pages/LoginPage.jsx";
 import CommandPalette from "./components/CommandPalette.jsx";
 import PageBoundary from "./components/PageBoundary.jsx";
+import ChatDock from "./components/ChatDock.jsx";
+import { chatProfileKey } from "./lib/chatPreferences.mjs";
 import logoUrl from "../assets/app-icon.png";
 
 const DashboardPage = lazy(() => import("./pages/DashboardPage.jsx"));
@@ -39,7 +41,6 @@ const AlleyDashboardPage = lazy(() => import("./pages/AlleyDashboardPage.jsx"));
 const AlleyAdminPage = lazy(() => import("./pages/AlleyAdminPage.jsx"));
 const StandeePage = lazy(() => import("./pages/StandeePage.jsx"));
 const SettingsPage = lazy(() => import("./pages/SettingsPage.jsx"));
-const TeamChatPage = lazy(() => import("./pages/TeamChatPage.jsx"));
 const ChangelogPage = lazy(() => import("./pages/ChangelogPage.jsx"));
 const BugsPage = lazy(() => import("./pages/BugsPage.jsx"));
 const SupportPage = lazy(() => import("./pages/SupportPage.jsx"));
@@ -409,7 +410,6 @@ export default function App() {
     dashboard: DashboardPage,
     analytics: AnalyticsPage,
     booths: BoothsPage,
-    chat: TeamChatPage,
     alleyDashboard: AlleyDashboardPage,
     alleyAdmin: AlleyAdminPage,
     standee: StandeePage,
@@ -498,8 +498,9 @@ export default function App() {
             <span className="name">{cfg.alleyUsername || "Signed in"}</span>
           </div>
         </header>
-        <div className="content" key={effectivePage}>
-          <PageBoundary><Suspense fallback={<div className="page-loading" role="status"><div className="spinner" /><span>Opening {TITLES[effectivePage]}...</span></div>}>
+        <div className="content">
+          <ChatDock key={`${chatProfileKey(cfg)}:${cfg.alleyToken}`} active={effectivePage === "chat"} allowed={!appLocked} cfg={cfg} refreshConfig={refreshConfig} onReturn={() => setPage("chat")} />
+          {effectivePage !== "chat" && <PageBoundary key={effectivePage}><Suspense fallback={<div className="page-loading" role="status"><div className="spinner" /><span>Opening {TITLES[effectivePage]}...</span></div>}>
           <PageComponent
             cfg={cfg}
             refreshConfig={refreshConfig}
@@ -511,7 +512,7 @@ export default function App() {
             newUploadIds={new Set(newUploads.map((booth) => String(booth.id)))}
             onAcknowledgeUploads={acknowledgeUploads}
           />
-          </Suspense></PageBoundary>
+          </Suspense></PageBoundary>}
         </div>
       </main>
       {commandOpen && <CommandPalette items={[...visibleNav.filter((item) => item.id && !item.disabled && (!appLocked || item.id === "booths")), { id: "settings", label: "Settings", Icon: Settings }]} onClose={() => setCommandOpen(false)} onNavigate={setPage} />}
