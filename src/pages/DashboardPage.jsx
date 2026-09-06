@@ -1,129 +1,74 @@
-import { useEffect, useMemo, useState } from "react";
-import { Boxes, Building2, MessageSquareText, Package, QrCode, ShieldCheck, Sparkles } from "lucide-react";
+import { useMemo, useState } from "react";
+import { Archive, ArrowRight, BarChart3, Boxes, Building2, CalendarClock, CheckCircle2, Combine, HardDrive, MessageSquareText, Package, RefreshCw, ShieldCheck, Sparkles, QrCode } from "lucide-react";
 import * as api from "../lib/api.js";
+import useBoothData from "../lib/useBoothData.js";
+import { analyzeBooths, formatStorage } from "../lib/analytics.mjs";
+import { ChartCard, ChartEmpty, UploadActivityChart } from "../components/AnalyticsCharts.jsx";
+
+const TOOLS = [
+  { id: "standee", title: "Standee Studio", description: "Turn your artwork into a ready-to-export 3D cutout.", Icon: Sparkles, color: "pink", tag: "3D CREATION" },
+  { id: "qr", title: "QR Codes", description: "Create sharp, scan-ready codes for your community.", Icon: QrCode, color: "teal", tag: "LINKS & PRINT" },
+  { id: "atlas", title: "Texture Atlas", description: "Pack textures, merge meshes, and export a lighter model.", Icon: Combine, color: "purple", tag: "OPTIMIZATION" }
+];
 
 export default function DashboardPage({ cfg, isAdmin, goTo, event }) {
-  const [booths, setBooths] = useState(null);
-  const [now, setNow] = useState(Date.now());
-
-  useEffect(() => {
-    if (!cfg.alleyCommunityId) {
-      setBooths([]);
-      return undefined;
-    }
-    let disposed = false;
-    const load = async () => {
-      const result = await api.alley("/api/booths/mine");
-      if (!disposed) setBooths(result.status === 200 ? result.data?.booths || [] : []);
-    };
-    load();
-    const timer = window.setInterval(() => {
-      setNow(Date.now());
-      load();
-    }, 60_000);
-    return () => {
-      disposed = true;
-      window.clearInterval(timer);
-    };
-  }, [cfg.alleyCommunityId]);
-
-  const countdown = useMemo(() => {
-    const startsAt = Date.parse(event?.startsAt || "");
-    if (!Number.isFinite(startsAt)) return null;
-    const remaining = Math.max(0, startsAt - now);
-    return {
-      live: remaining === 0 && now <= Date.parse(event?.endsAt || ""),
-      days: Math.floor(remaining / 86_400_000),
-      hours: Math.floor((remaining % 86_400_000) / 3_600_000),
-      minutes: Math.floor((remaining % 3_600_000) / 60_000)
-    };
-  }, [event, now]);
-
-  const uploads = booths || [];
-  const active = uploads.filter((booth) => booth.status === "active");
-  const totalBytes = uploads.reduce((sum, booth) => sum + (Number(booth.fileSize) || 0), 0);
-  const latest = uploads.slice().sort((left, right) => Date.parse(right.uploadedAt) - Date.parse(left.uploadedAt)).slice(0, 5);
+  const scope = !cfg.alleyCommunityId && isAdmin ? "all" : "mine";
+  const [period, setPeriod] = useState("30");
+  const { data, loading, error, refresh } = useBoothData({ cfg, scope });
+  const now = data?.fetchedAt || Date.now();
+  const snapshot = useMemo(() => analyzeBooths(data?.booths, { range: "all", now }), [data?.booths, now]);
+  const activity = useMemo(() => analyzeBooths(data?.booths, { range: period, now }), [data?.booths, period, now]);
+  const latest = snapshot.rows.slice(0, 4);
+  const active = snapshot.totals.active;
+  const startsAt = Date.parse(event?.startsAt || "");
+  const endsAt = Date.parse(event?.endsAt || "");
+  const remaining = Math.max(0, startsAt - now);
+  const eventEnded = Number.isFinite(endsAt) && now > endsAt;
+  const eventLive = Number.isFinite(startsAt) && Number.isFinite(endsAt) && startsAt <= now && now <= endsAt;
+  const backupTarget = scope === "all" ? "alleyAdmin" : "booths";
+  const statValue = (value) => data ? value : loading ? "..." : "Unavailable";
 
   return (
-    <div className="page dashboard-page">
-      <div className="pagehead">
-        <h1>{cfg.alleyCommunityName || "Alley operations"}</h1>
-        <div className="sub">
-          {cfg.alleyCommunityId
-            ? "Your community workspace, backed by the same uploads and team roster used by Legends Alley."
-            : "Staff access is connected. Choose Alley Admin to work across communities."}
-        </div>
+    <div className="page dashboard-page dashboard-refined">
+      <div className="workspace-heading">
+        <div><span className="eyebrow">{cfg.alleyCommunityName || "ALLEY OPERATIONS"}</span><h1>Your workspace, at a glance.</h1><p>Keep your booth on track. Everything you need, in one place.</p></div>
+        <div className="workspace-heading-actions"><button className="icon-button" aria-label="Refresh dashboard" title="Refresh dashboard" disabled={loading} onClick={refresh}><RefreshCw size={16} className={loading ? "spin" : ""} /></button><button className="primary" onClick={() => goTo("analytics")}><BarChart3 size={16} />Open analytics<ArrowRight size={14} /></button></div>
       </div>
-
-      <div className="stagger dashboard-stack">
-        <section className="hero event-hero">
-          <video className="event-hero-media" autoPlay muted loop playsInline poster="./booth-model/legends-banner.webp" aria-hidden="true">
-            <source src="./booth-model/legends-banner.mp4" type="video/mp4" />
-          </video>
-          <div className="grow">
-            <h2>{event?.name || "Legends Alley"}</h2>
-            <div className="date">
-              {event?.startsAt
-                ? `${api.formatDate(event.startsAt)}${event.timezone ? ` (${event.timezone})` : ""}`
-                : event ? "Event schedule pending" : "Syncing event details..."}
-            </div>
-            <div className="event-state-line">
-              <span className={`service-dot${event?.acceptingBooths ? " online" : ""}`} />
-              {event ? (event.acceptingBooths ? "Uploads are open" : "Uploads are closed") : "Checking upload status..."}
-            </div>
-          </div>
-          {countdown && (
-            <div className="cd">
-              {countdown.live ? <div className="unit"><div className="num">LIVE</div><div className="lab">NOW</div></div> : (
-                <>
-                  <div className="unit"><div className="num">{countdown.days}</div><div className="lab">DAYS</div></div>
-                  <div className="unit"><div className="num">{countdown.hours}</div><div className="lab">HOURS</div></div>
-                  <div className="unit"><div className="num">{countdown.minutes}</div><div className="lab">MINS</div></div>
-                </>
-              )}
-            </div>
-          )}
+      {error && <div className="errbox mb16" role="alert">{error}{data ? " Showing the last successful snapshot." : " Upload totals are unavailable."}</div>}
+      {data?.warnings.map((warning) => <div className="warnbox mb16" key={warning}>{warning}</div>)}
+      <div className="dashboard-stack">
+        <section className="hero event-hero dashboard-event">
+          <img className="event-hero-media" src="./booth-model/legends-banner.webp" alt="" aria-hidden="true" />
+          <div className="grow"><span className="eyebrow">{eventEnded ? "RECENT EVENT" : eventLive ? "HAPPENING NOW" : "ON THE CALENDAR"}</span><h2>{event?.name || "Legends Alley"}</h2><div className="date">{event?.startsAt ? api.formatDate(event.startsAt) : "Event schedule pending"}</div><div className="event-state-line"><span className={`service-dot${event?.acceptingBooths ? " online" : ""}`} />{event ? event.acceptingBooths ? "Booth uploads are open" : "Booth uploads are closed" : "Waiting for event details"}</div></div>
+          {Number.isFinite(startsAt) && <div className="cd">{eventEnded || eventLive || !remaining ? <div className="unit"><div className="num event-phase">{eventEnded ? "ENDED" : eventLive ? "LIVE" : "STARTED"}</div><div className="lab">EVENT STATUS</div></div> : <><div className="unit"><div className="num">{Math.floor(remaining / 86_400_000)}</div><div className="lab">DAYS</div></div><div className="unit"><div className="num">{Math.floor(remaining % 86_400_000 / 3_600_000)}</div><div className="lab">HOURS</div></div><div className="unit"><div className="num">{Math.floor(remaining % 3_600_000 / 60_000)}</div><div className="lab">MINS</div></div></>}</div>}
         </section>
 
-        <div className="stats">
-          <div className="stat"><div className="v">{booths ? uploads.length : "-"}</div><div className="l">Retained uploads</div></div>
-          <div className="stat"><div className="v">{booths ? active.length : "-"}</div><div className="l">Active versions</div></div>
-          <div className="stat"><div className="v">{cfg.alleyCommunityId ? api.formatBytes(totalBytes) : "-"}</div><div className="l">Backup storage</div></div>
-          <div className="stat"><div className="v">{String(cfg.alleyRole || (isAdmin ? "staff" : "team")).toUpperCase()}</div><div className="l">Community role</div></div>
+        <div className="analytics-stats dashboard-metrics">
+          <DashboardMetric label="Retained uploads" value={statValue(snapshot.totals.uploads.toLocaleString())} detail={scope === "all" ? "Across all communities" : "Your community's server backups"} Icon={Archive} />
+          <DashboardMetric label="Active versions" value={statValue(active.toLocaleString())} detail="Current server status" Icon={CheckCircle2} color="teal" />
+          <DashboardMetric label="Archive storage" value={statValue(formatStorage(snapshot.totals.sizeSamples ? snapshot.totals.bytes : snapshot.totals.uploads ? null : 0))} detail={data ? `${snapshot.totals.sizeSamples} archive sizes reported` : "Waiting for the Alley service"} Icon={HardDrive} color="purple" />
+          <DashboardMetric label="Workspace access" value={String(cfg.alleyRole || (isAdmin ? "staff" : "team"))} detail={scope === "all" ? "Staff overview" : "Community workspace"} Icon={ShieldCheck} color="amber" />
         </div>
 
-        <div className="dashboard-workspace">
-          <section className="dashboard-section">
-            <div className="section-heading"><div><h2>Recent server uploads</h2><p>Only booth packages uploaded through the Legends Alley SDK appear here.</p></div><button className="ghost small" onClick={() => goTo("booths")} disabled={!cfg.alleyCommunityId}>View all</button></div>
-            {!booths && <div className="skeleton" style={{ height: 150 }} />}
-            {booths && latest.length === 0 && (
-              <div className="empty-state compact"><Boxes size={27} /><h2>No booth uploads yet</h2><p>Your first accepted SDK upload will appear here automatically.</p></div>
-            )}
-            <div className="recent-upload-list">
-              {latest.map((booth) => (
-                <button key={booth.id} className="upload-summary" onClick={() => goTo("booths")}>
-                  <span className="version-mark">v{booth.version}</span>
-                  <span className="grow"><strong>{booth.prefabName || `Booth version ${booth.version}`}</strong><small>{api.formatDate(booth.uploadedAt)} | {api.formatBytes(booth.fileSize)}</small></span>
-                  <span className={`pill ${booth.status === "active" ? "teal" : "gray"}`}>{booth.status}</span>
-                </button>
-              ))}
-            </div>
-          </section>
-
-          <section className="dashboard-shortcuts">
-            <div className="section-heading"><div><h2>Quick access</h2><p>Jump back into your Alley workspace.</p></div></div>
-            <div className="dashboard-shortcut-grid">
-              <button className="featured" onClick={() => goTo("booths")} disabled={!cfg.alleyCommunityId}><Boxes size={19} /><span>Booth backups</span></button>
-              <button onClick={() => goTo("chat")}><MessageSquareText size={19} /><span>Team chat</span></button>
-              {cfg.alleyCommunityId && <button onClick={() => goTo("alleyDashboard")}><Building2 size={19} /><span>Community</span></button>}
-              <button onClick={() => goTo("standee")}><Sparkles size={19} /><span>Standee Studio</span></button>
-              <button onClick={() => goTo("unitySdk")}><Package size={19} /><span>Unity SDK</span></button>
-              <button onClick={() => goTo("qr")}><QrCode size={19} /><span>QR Codes</span></button>
-              {isAdmin && <button onClick={() => goTo("alleyAdmin")}><ShieldCheck size={19} /><span>Alley Admin</span></button>}
-            </div>
-          </section>
+        <div className="dashboard-overview-grid">
+          <ChartCard title="Upload activity" subtitle={`${activity.totals.uploads} retained uploads in the last ${period} days (UTC)`} exportable={false} actions={<div className="chart-switch" role="group" aria-label="Dashboard activity period"><button aria-pressed={period === "7"} onClick={() => setPeriod("7")}>7 days</button><button aria-pressed={period === "30"} onClick={() => setPeriod("30")}>30 days</button></div>}>
+            {!data ? <ChartEmpty title={loading ? "Loading upload history" : "Upload history unavailable"} description={loading ? "Reading retained records from Legends Alley." : "Refresh to try again. No zero totals have been substituted."} /> : activity.totals.uploads ? <UploadActivityChart data={activity.series} /> : <ChartEmpty description="Your accepted SDK uploads will appear here. Open Analytics for a wider date range." />}
+          </ChartCard>
+          <section className="dashboard-next-step"><span className="eyebrow">STAY ON TRACK</span><h2>Ready for the Alley?</h2><div className="dashboard-check"><CheckCircle2 size={19} className={active ? "teal" : "muted"} /><div><strong>{!data ? "Checking booth backups" : active ? `${active} active version${active === 1 ? "" : "s"} on the server` : "No active version reported"}</strong><span>Inspect your latest ZIP and SDK report.</span></div></div><div className="dashboard-check"><CalendarClock size={19} /><div><strong>{event?.uploadDeadline ? "Upload deadline" : "No upload deadline published"}</strong><span>{event?.uploadDeadline ? api.formatDate(event.uploadDeadline) : "Check event details before submitting."}</span></div></div><button className="primary" onClick={() => goTo(backupTarget)}><Boxes size={15} />{scope === "all" ? "Open staff console" : "Review booth backups"}<ArrowRight size={14} /></button><button className="ghost" onClick={() => goTo("unitySdk")}><Package size={15} />Get the Unity SDK</button></section>
         </div>
+
+        <section className="dashboard-tools"><div className="section-heading"><div><h2>Made for your workflow</h2><p>Create and optimize locally. Your source files stay untouched.</p></div></div><div className="dashboard-tool-grid">{TOOLS.map(({ id, title, description, Icon, color, tag }) => <button key={id} className={`dashboard-tool ${color}`} onClick={() => goTo(id)}><div className="dashboard-tool-top"><span className="tool-tile-icon"><Icon size={22} /></span><span>{tag}</span><ArrowRight size={16} /></div><strong>{title}</strong><p>{description}</p></button>)}</div></section>
+
+        <div className="dashboard-bottom-grid">
+          <section className="dashboard-section"><div className="section-heading"><div><h2>Recent uploads</h2><p>Real server versions, newest first.</p></div><button className="ghost small right" onClick={() => goTo(backupTarget)}>View all<ArrowRight size={14} /></button></div>{!data && loading && <div className="skeleton" style={{ height: 120 }} />}{data && !latest.length && <div className="dashboard-empty"><Boxes size={24} /><span>No retained uploads yet. Submit a booth through the Unity SDK to get started.</span></div>}<div className="recent-upload-list">{latest.map((row) => <button key={row.key} className="upload-summary" onClick={() => goTo(backupTarget)}><span className="version-mark">v{row.version}</span><span className="grow"><strong>{row.communityName ? `${row.communityName} / ` : ""}{row.name}</strong><small>{row.timestamp === null ? "Date not reported" : api.formatDate(row.booth.uploadedAt)} / {formatStorage(row.fileSize)}</small></span><span className={`pill ${row.status === "active" ? "teal" : "gray"}`}>{row.status}</span><ArrowRight size={14} /></button>)}</div></section>
+          <section className="dashboard-connect"><span className="eyebrow">BETTER TOGETHER</span><h2>Your community hub</h2><p>Keep feedback, people, and booth decisions in sync.</p><button onClick={() => goTo("chat")}><MessageSquareText size={18} /><span><strong>Team chat</strong><small>Conversations and shared files</small></span><ArrowRight size={15} /></button>{cfg.alleyCommunityId && <button onClick={() => goTo("alleyDashboard")}><Building2 size={18} /><span><strong>Community profile</strong><small>Branding, links, and your team</small></span><ArrowRight size={15} /></button>}{isAdmin && <button onClick={() => goTo("alleyAdmin")}><ShieldCheck size={18} /><span><strong>Alley Admin</strong><small>Manage the wider event</small></span><ArrowRight size={15} /></button>}</section>
+        </div>
+        <p className="dashboard-provenance">{data ? `Last synced ${new Date(data.fetchedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}. ` : ""}Totals cover retained SDK uploads, not deleted history or visitor activity.</p>
       </div>
     </div>
   );
+}
+
+function DashboardMetric({ label, value, detail, Icon, color = "pink" }) {
+  return <div className={`analytics-stat ${color}`}><div className="analytics-stat-top"><span>{label}</span><Icon size={17} /></div><strong>{value}</strong><small>{detail}</small></div>;
 }

@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  BarChart3,
   Box,
   Boxes,
   Bug,
@@ -16,6 +17,7 @@ import {
   Palette,
   QrCode,
   ScrollText,
+  Search,
   Settings,
   ShieldCheck,
   Sparkles,
@@ -26,24 +28,29 @@ import * as audio from "./lib/audio.js";
 import { MarkdownView, BroadcastMedia } from "./lib/markdown.jsx";
 import peerFiles from "./lib/peerFiles.js";
 import LoginPage from "./pages/LoginPage.jsx";
-import DashboardPage from "./pages/DashboardPage.jsx";
-import BoothsPage from "./pages/BoothsPage.jsx";
-import AlleyDashboardPage from "./pages/AlleyDashboardPage.jsx";
-import AlleyAdminPage from "./pages/AlleyAdminPage.jsx";
-import StandeePage from "./pages/StandeePage.jsx";
-import SettingsPage from "./pages/SettingsPage.jsx";
-import TeamChatPage from "./pages/TeamChatPage.jsx";
-import ChangelogPage from "./pages/ChangelogPage.jsx";
-import BugsPage from "./pages/BugsPage.jsx";
-import SupportPage from "./pages/SupportPage.jsx";
-import UnitySdkPage from "./pages/UnitySdkPage.jsx";
-import QrPage from "./pages/QrPage.jsx";
-import TextureAtlasPage from "./pages/TextureAtlasPage.jsx";
+import CommandPalette from "./components/CommandPalette.jsx";
+import PageBoundary from "./components/PageBoundary.jsx";
 import logoUrl from "../assets/app-icon.png";
+
+const DashboardPage = lazy(() => import("./pages/DashboardPage.jsx"));
+const AnalyticsPage = lazy(() => import("./pages/AnalyticsPage.jsx"));
+const BoothsPage = lazy(() => import("./pages/BoothsPage.jsx"));
+const AlleyDashboardPage = lazy(() => import("./pages/AlleyDashboardPage.jsx"));
+const AlleyAdminPage = lazy(() => import("./pages/AlleyAdminPage.jsx"));
+const StandeePage = lazy(() => import("./pages/StandeePage.jsx"));
+const SettingsPage = lazy(() => import("./pages/SettingsPage.jsx"));
+const TeamChatPage = lazy(() => import("./pages/TeamChatPage.jsx"));
+const ChangelogPage = lazy(() => import("./pages/ChangelogPage.jsx"));
+const BugsPage = lazy(() => import("./pages/BugsPage.jsx"));
+const SupportPage = lazy(() => import("./pages/SupportPage.jsx"));
+const UnitySdkPage = lazy(() => import("./pages/UnitySdkPage.jsx"));
+const QrPage = lazy(() => import("./pages/QrPage.jsx"));
+const TextureAtlasPage = lazy(() => import("./pages/TextureAtlasPage.jsx"));
 
 const NAV = [
   { section: "Workspace" },
   { id: "dashboard", label: "Dashboard", Icon: LayoutDashboard },
+  { id: "analytics", label: "Analytics", Icon: BarChart3, keywords: "charts statistics storage performance reports" },
   { id: "booths", label: "Booth Backups", Icon: Boxes },
   { id: "chat", label: "Team Chat", Icon: MessageSquareText },
   { section: "Alley service" },
@@ -79,6 +86,7 @@ const NAV = [
 
 const TITLES = {
   dashboard: "Dashboard",
+  analytics: "Analytics",
   booths: "Booth Backups",
   chat: "Team Chat",
   alleyDashboard: "Community",
@@ -93,8 +101,7 @@ const TITLES = {
   settings: "Settings"
 };
 
-/** First line or so of a popup's markdown as plain text for the native
- * notification body (strips headings, emphasis, links, images, quotes). */
+// Native notifications need a short, plain-text version of the popup.
 function plainTextSnippet(markdown, max = 160) {
   const text = String(markdown || "")
     .replace(/```[\s\S]*?```/g, " ")
@@ -120,6 +127,7 @@ export default function App() {
   const [updateDismissed, setUpdateDismissed] = useState(false);
   const [popups, setPopups] = useState([]);
   const [ticketAttention, setTicketAttention] = useState(0);
+  const [commandOpen, setCommandOpen] = useState(false);
   const sessionStartRef = useRef(new Date().toISOString());
   const seenBroadcastsRef = useRef(new Set());
   const ticketSeenRef = useRef({ byId: new Map(), primed: false });
@@ -247,6 +255,18 @@ export default function App() {
     [isStaff, cfg?.alleyCommunityId]
   );
 
+  useEffect(() => {
+    if (!loggedIn) { setCommandOpen(false); return undefined; }
+    const onShortcut = (event) => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        setCommandOpen((open) => !open);
+      }
+    };
+    window.addEventListener("keydown", onShortcut);
+    return () => window.removeEventListener("keydown", onShortcut);
+  }, [loggedIn]);
+
   const login = useCallback(async () => {
     setLoginError("");
     const result = await api.alleyLogin();
@@ -266,21 +286,13 @@ export default function App() {
     await refreshConfig();
   }, [refreshConfig]);
 
-  // Staff popups plus the access watchdog: this loop runs against the strict
-  // membership middleware, so a removed team member or a deactivated
-  // community turns into a 401/403 here and signs the app out.
-  //
-  // Delivery is a long-poll: the service holds /api/broadcasts/wait for up
-  // to ~25s and resolves the moment staff hit send, so popups (and their
-  // native notifications) land within a second instead of on a poll cycle.
-  // Older service builds without /wait fall back to the 45s flat poll.
+  // Broadcast long-polling also checks membership; older servers use a timed poll.
   useEffect(() => {
     if (!cfg?.alleyToken) return undefined;
     let disposed = false;
     let fallbackTimer = 0;
     let longPollSupported = true;
-    // advances past everything already delivered so a resolved long-poll
-    // does not re-return the same broadcasts in a tight loop
+    // Advance past delivered broadcasts to avoid a tight long-poll loop.
     let since = sessionStartRef.current;
 
     const deliver = (broadcasts) => {
@@ -295,8 +307,7 @@ export default function App() {
       if (!fresh.length) return;
       audio.ping();
       setPopups((current) => [...current, ...fresh]);
-      // Native notification when the window is hidden (tray), minimized, or
-      // unfocused; skipped when the user is looking at the in-app popup.
+      // Native notifications are only needed when the app is out of focus.
       if (document.hidden || !document.hasFocus()) {
         for (const broadcast of fresh) {
           api.notifyNative({
@@ -343,9 +354,7 @@ export default function App() {
     };
   }, [cfg?.alleyToken, logout]);
 
-  // Ticket activity: same ping language as chat mentions plus a nav badge.
-  // Users hear about staff replies; staff hear about tickets entering the
-  // needs-reply queue.
+  // Ticket replies share the chat ping and show a navigation badge.
   useEffect(() => {
     if (!cfg?.alleyToken) {
       setTicketAttention(0);
@@ -398,6 +407,7 @@ export default function App() {
 
   const PageComponent = {
     dashboard: DashboardPage,
+    analytics: AnalyticsPage,
     booths: BoothsPage,
     chat: TeamChatPage,
     alleyDashboard: AlleyDashboardPage,
@@ -427,8 +437,10 @@ export default function App() {
               type="button"
               key={item.id}
               className={`navitem${effectivePage === item.id ? " active" : ""}`}
+              aria-current={effectivePage === item.id ? "page" : undefined}
+              aria-label={item.label}
               disabled={item.disabled || (appLocked && item.id !== "booths")}
-              title={item.disabled ? (item.tooltip || "Coming soon") : appLocked && item.id !== "booths" ? "Backup-only mode is active" : ""}
+              title={item.disabled ? (item.tooltip || "Coming soon") : appLocked && item.id !== "booths" ? "Backup-only mode is active" : item.label}
               onClick={() => !item.disabled && setPage(item.id)}
             >
               <item.Icon className="ico" size={17} strokeWidth={1.8} />
@@ -438,11 +450,11 @@ export default function App() {
             </button>
           ))}
         </div>
-        <div className="sidebar-status">
+        <div className="sidebar-status" title="Signed in to Legends Alley">
           <span className="service-dot online" />
           <span>{cfg.alleyCommunityName || (isStaff ? "Alley staff" : "Alley connected")}</span>
         </div>
-        <button type="button" className={`navitem${effectivePage === "settings" ? " active" : ""}`} onClick={() => setPage("settings")}>
+        <button type="button" className={`navitem${effectivePage === "settings" ? " active" : ""}`} title="Settings" aria-label="Settings" aria-current={effectivePage === "settings" ? "page" : undefined} onClick={() => setPage("settings")}>
           <Settings className="ico" size={17} strokeWidth={1.8} /><span>Settings</span>
         </button>
       </aside>
@@ -469,6 +481,7 @@ export default function App() {
             <strong>{appLocked && effectivePage === "booths" ? "Backup Mode" : TITLES[effectivePage]}</strong>
           </div>
           <div className="spacer" />
+          <button className="quick-nav-trigger" onClick={() => setCommandOpen(true)} aria-label="Quick navigation, Control K" aria-keyshortcuts="Control+K Meta+K"><Search size={14} /><span>Jump to...</span><kbd>Ctrl K</kbd></button>
           <div className="community-chip">
             <FallbackImage className="chip-logo" src={cfg.alleyLogoUrl} fallback={<Building2 size={15} />} />
             <span>
@@ -486,6 +499,7 @@ export default function App() {
           </div>
         </header>
         <div className="content" key={effectivePage}>
+          <PageBoundary><Suspense fallback={<div className="page-loading" role="status"><div className="spinner" /><span>Opening {TITLES[effectivePage]}...</span></div>}>
           <PageComponent
             cfg={cfg}
             refreshConfig={refreshConfig}
@@ -497,8 +511,10 @@ export default function App() {
             newUploadIds={new Set(newUploads.map((booth) => String(booth.id)))}
             onAcknowledgeUploads={acknowledgeUploads}
           />
+          </Suspense></PageBoundary>
         </div>
       </main>
+      {commandOpen && <CommandPalette items={[...visibleNav.filter((item) => item.id && !item.disabled && (!appLocked || item.id === "booths")), { id: "settings", label: "Settings", Icon: Settings }]} onClose={() => setCommandOpen(false)} onNavigate={setPage} />}
       {popups.length > 0 && (
         <BroadcastPopup
           broadcast={popups[0]}
@@ -509,8 +525,7 @@ export default function App() {
   );
 }
 
-/** Image that swaps to a fallback node when the source is empty or fails
- * to load (expired Discord avatar, rate-limited logo fetch, offline). */
+// Expired remote images fall back to the supplied identity marker.
 function FallbackImage({ src, className, fallback }) {
   const [failed, setFailed] = useState(false);
   useEffect(() => setFailed(false), [src]);

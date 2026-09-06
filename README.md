@@ -31,6 +31,16 @@ website and Unity SDK. It is built with Electron, React, Vite, and Three.js.
   or STL export.
 - Background update downloads and restart-to-install support.
 
+## Analytics and workspace tools
+
+- Analytics uses Recharts for interactive upload activity, version status, SDK performance, and archive-storage charts.
+- Filter by 7, 30, or 90 days, all retained records, or custom UTC dates; staff can also filter all-community data.
+- CSV exports include the filtered records, measurement gaps, report scope, and snapshot time; each chart can be saved as SVG.
+- Totals cover retained SDK uploads only, not deleted history, visits, or downloads. Missing measurements are never substituted with zeros.
+- The dashboard includes upload activity, event timing, recent backups, and shortcuts. Ctrl+K opens keyboard navigation.
+- QR tools check contrast, quiet zones, and raster detail; PNG and SVG exports use the current payload and settings.
+- Texture Atlas serializes rebuilds, blocks stale exports, and displays measured material and mesh reductions with local GLB and PNG exports.
+
 ## Peer Attachments
 
 Messages allow up to five attachments, each no larger than 500 MB. Transfers
@@ -47,12 +57,13 @@ Requirements: Node 20+.
 npm install
 npm run dev      # vite + electron with hot reload
 npm run build:icon
+npm test
 ```
 
 ## Build the installer
 
 ```
-npm run dist     # NSIS installer in release/
+npm run dist -- --publish never
 ```
 
 The installer build regenerates the multi-size Windows icon from

@@ -1,6 +1,6 @@
 {
   "name": "booth-manager",
-  "version": "2.3.1",
+  "version": "2.4.0",
   "description": "Legends Alley community chat, booth backup, and event companion",
   "author": "VRChat Legends",
   "productName": "Booth Manager",
@@ -9,6 +9,7 @@
     "dev": "concurrently \"vite\" \"wait-on tcp:5175 && electron .\"",
     "build:icon": "node scripts/build-icon.js",
     "build:web": "vite build",
+    "test": "node --test \"tests/*.test.mjs\"",
     "start": "electron .",
     "dist": "npm run build:icon && npm run build:web && electron-builder --win nsis"
   },
@@ -19,6 +20,7 @@
     "qrcode": "^1.5.4",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
+    "recharts": "^3.10.1",
     "three": "^0.180.0"
   },
   "devDependencies": {
